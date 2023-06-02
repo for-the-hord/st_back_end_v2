@@ -26,7 +26,7 @@ SECRET_KEY = 'django-insecure-$u$a)&wvw6jkf-34akd)5roxmmgvsoo+ik7u4i1#uxzceh#86%
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 
 # Application definition
@@ -38,18 +38,21 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
+    #'django.middleware.csrf.CsrfViewMiddleware',
+
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
-
+CORS_ALLOW_ALL_ORIGINS = True
 ROOT_URLCONF = 'st_back_end_v2.urls'
 
 TEMPLATES = [
@@ -77,8 +80,12 @@ WSGI_APPLICATION = 'st_back_end_v2.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'st',  # 数据库名称
+        'USER': 'root',  # 数据库用户名
+        'PASSWORD': '123456',  # 数据库密码
+        'HOST': 'localhost',  # 数据库主机，默认为'localhost'
+        'PORT': '3306',  # 数据库端口，默认为'3306'
     }
 }
 
