@@ -8,31 +8,14 @@
 """
 
 import json
-import jwt
-from datetime import datetime
-from collections import defaultdict
-import os
-import io
-import openpyxl
-from openpyxl.utils import get_column_letter
-from openpyxl.styles import Font, PatternFill, Alignment
-from cryptography.fernet import Fernet
-import pandas as pd
-from urllib.parse import quote
 
-from django.http import HttpResponse
-from django.contrib.staticfiles.storage import staticfiles_storage
-from django.conf import settings
-from django.core.files.storage import default_storage
 from django.db import connection as conn
-from django.http import JsonResponse, HttpRequest, FileResponse
+from django.http import JsonResponse, HttpRequest
 from django.utils.decorators import method_decorator
-from django.views import View
 from django.views.decorators.csrf import csrf_exempt
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
-from django.templatetags.static import static
+from django.views.generic import ListView, CreateView, UpdateView
 
-from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict, component_to_json, FERNET_KEY
+from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict
 
 
 # 获取用户列表
@@ -133,6 +116,11 @@ class delete_view(CreateView):
 
     def post(self, request: HttpRequest, *args, **kwargs):
         response = create_return_json()
+        try:
+            j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            return JsonResponse(response, status=400)
         try:
             j = json.loads(request.body)
             id = j.get('id')  # 用户id

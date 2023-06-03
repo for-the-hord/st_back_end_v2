@@ -40,6 +40,7 @@ urlpatterns = [
     path('api/export_template', template_view.export_view.as_view()),
     path('api/import_template', template_view.import_view.as_view()),
 
+    path('api/get_field_list', field_view.list_view.as_view()),
     path('api/add_field', field_view.create_view.as_view()),
     path('api/del_field', field_view.delete_view.as_view()),
 
@@ -52,11 +53,11 @@ urlpatterns = [
     path('api/get_template_by_unit',template_view.list_by_unit_view.as_view()),
 
     #单位管理
-    path('api/getUnit', unit_view.list_view.as_view()),
-    path('api/getUnitItem', unit_view.item.as_view()),
-    path('api/addUnit', unit_view.create_view.as_view()),
-    path('api/delUnit', unit_view.update_view.as_view()),
-    path('api/putUnitItem', unit_view.delete_view.as_view()),
+    path('api/get_unit_list', unit_view.list_view.as_view()),
+    # path('api/get_unit', unit_view.item.as_view()),
+    path('api/add_unit', unit_view.create_view.as_view()),
+    path('api/update_unit', unit_view.update_view.as_view()),
+    path('api/del_unit', unit_view.delete_view.as_view()),
 
     # 角色管理
 ]

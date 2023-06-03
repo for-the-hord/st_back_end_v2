@@ -7,33 +7,21 @@
 @description:
 """
 import json
-import jwt
 from datetime import datetime
-from collections import defaultdict
-import os
 import io
-import openpyxl
-from openpyxl.utils import get_column_letter
-from openpyxl.styles import Font, PatternFill, Alignment
 from cryptography.fernet import Fernet
-import pandas as pd
 from urllib.parse import quote
 
-from django.http import HttpResponse
-from django.contrib.staticfiles.storage import staticfiles_storage
-from django.conf import settings
-from django.core.files.storage import default_storage
 from django.db import connection as conn
-from django.http import JsonResponse, HttpRequest,FileResponse
+from django.http import JsonResponse, HttpRequest, FileResponse
 from django.utils.decorators import method_decorator
-from django.views import View
 from django.views.decorators.csrf import csrf_exempt
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
-from django.templatetags.static import static
+from django.views.generic import ListView, CreateView, UpdateView, DetailView
 
-from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict, component_to_json,FERNET_KEY
+from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict, component_to_json, FERNET_KEY
 
 
+# 获取模板列表
 @method_decorator(csrf_exempt, name='dispatch')
 # @method_decorator(check_token, name='dispatch')
 class list_view(ListView):
@@ -43,49 +31,50 @@ class list_view(ListView):
             j = json.loads(request.body)
         except:
             response['msg'], response['code'] = 'bad request！', return_msg.S400
-            return JsonResponse(response,status=400)
+            return JsonResponse(response, status=400)
         try:
-                page_size = j.get('page_size')
-                page_index = j.get('page_index')
-                condition = j.get('condition', {})
+            page_size = j.get('page_size')
+            page_index = j.get('page_index')
+            condition = j.get('condition', {})
 
-                def convert_key(orginal):
-                    if orginal == 'template_name':
-                        k = 't.name'
-                    else:
-                        k = None
-                    return k
-                limit_clause = '' if page_size == 0 and page_index == 0 else 'limit %s offset %s'
-                where_clause = '' if len(condition) == 0 else 'where ' + " AND ".join(
-                    [f"{convert_key(key)} LIKE %s" for key in condition.keys()])
-                where_values = ["%" + value + "%" for value in condition.values()]
-                with conn.cursor() as cur:
-                    params = where_values
-                    sql = f'select count(*) as count from template t {where_clause}'
-                    cur.execute(sql, params)
-                    rows = rows_as_dict(cur)
-                    count = rows[0]['count']
-                    sql = 'select t.id,t.name as template_name,t.is_file,' \
-                          't.create_date,t.update_date ' \
-                          'from template t  ' \
-                          f'{where_clause} ' \
-                          f'order by t.update_date desc {limit_clause}'
-                    params = where_values + [page_size, (page_index - 1) * page_size] \
-                        if limit_clause != '' else where_values
-                    cur.execute(sql, params)
-                    rows = rows_as_dict(cur)
-                template_list = [
-                    {'id': it.get('id'), 'name': it.get('template_name'),
-                     'is_file': it.get('is_fle'),
-                     'create_date': datetime.fromtimestamp(it.get('create_date')).strftime(
-                         '%Y-%m-%d %H:%M:%S'),
-                     'update_date': datetime.fromtimestamp(0 if (re := it.get('update_date')) is None else re).strftime(
-                         '%Y-%m-%d %H:%M:%S')} for it in rows]
+            def convert_key(orginal):
+                if orginal == 'template_name':
+                    k = 't.name'
+                else:
+                    k = None
+                return k
 
-                # 构造返回数据
-                response['data'] = {'records': template_list, 'title': None,
-                                    'total': count}
-                return JsonResponse(response)
+            limit_clause = '' if page_size == 0 and page_index == 0 else 'limit %s offset %s'
+            where_clause = '' if len(condition) == 0 else 'where ' + " AND ".join(
+                [f"{convert_key(key)} LIKE %s" for key in condition.keys()])
+            where_values = ["%" + value + "%" for value in condition.values()]
+            with conn.cursor() as cur:
+                params = where_values
+                sql = f'select count(*) as count from template t {where_clause}'
+                cur.execute(sql, params)
+                rows = rows_as_dict(cur)
+                count = rows[0]['count']
+                sql = 'select t.id,t.name as template_name,t.is_file,' \
+                      't.create_date,t.update_date ' \
+                      'from template t  ' \
+                      f'{where_clause} ' \
+                      f'order by t.update_date desc {limit_clause}'
+                params = where_values + [page_size, (page_index - 1) * page_size] \
+                    if limit_clause != '' else where_values
+                cur.execute(sql, params)
+                rows = rows_as_dict(cur)
+            template_list = [
+                {'id': it.get('id'), 'name': it.get('template_name'),
+                 'is_file': it.get('is_fle'),
+                 'create_date': datetime.fromtimestamp(it.get('create_date')).strftime(
+                     '%Y-%m-%d %H:%M:%S'),
+                 'update_date': datetime.fromtimestamp(0 if (re := it.get('update_date')) is None else re).strftime(
+                     '%Y-%m-%d %H:%M:%S')} for it in rows]
+
+            # 构造返回数据
+            response['data'] = {'records': template_list, 'title': None,
+                                'total': count}
+            return JsonResponse(response)
         except Exception as e:
             print(e)
             return JsonResponse(response, status=500)
@@ -99,6 +88,10 @@ class item(DetailView):
         response = create_return_json()
         try:
             j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            return JsonResponse(response, status=400)
+        try:
             id = j.get('id')
             with conn.cursor() as cur:
                 sql = 'select t.id,t.name,t.is_file,' \
@@ -134,11 +127,13 @@ class item(DetailView):
                             data['equipment_name'].append(equipment_name)
 
                     response['data'] = data
+                    return JsonResponse(response)
         except Exception as e:
-            response['code'], response['msg'] = return_msg.S100, return_msg.row_none
-        return JsonResponse(response)
+            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            return JsonResponse(response)
 
 
+# 搜索模板by 单位名称
 @method_decorator(csrf_exempt, name='dispatch')
 # @method_decorator(check_token, name='dispatch')
 class list_by_unit_view(ListView):
@@ -146,7 +141,10 @@ class list_by_unit_view(ListView):
         response = create_return_json()
         try:
             j = json.loads(request.body)
-
+        except:
+            response['msg'], response['code'] = return_msg.bad_request, return_msg.S400
+            return JsonResponse(response, status=400)
+        try:
             with conn.cursor() as cur:
                 if 'unit_name' in j:
                     unit_name = j.get('unit_name')
@@ -165,7 +163,9 @@ class list_by_unit_view(ListView):
                 response['data'] = rows
             return JsonResponse(response)
         except Exception as e:
-            return JsonResponse(response, status=500)
+            print(e)
+            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            return JsonResponse(response)
 
 
 # 添加一个模板接口
@@ -174,9 +174,12 @@ class create_view(CreateView):
     def post(self, request, *args, **kwargs):
         response = create_return_json()
         try:
+            j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = return_msg.bad_request, return_msg.S400
+            return JsonResponse(response, status=400)
+        try:
             # 从请求的 body 中获取 JSON 数据
-            json_data = request.body.decode('utf-8')
-            j = json.loads(json_data)
             id = create_uuid()  # 模板id
             label = j.get('label')  # 模板名称
             equipment_name = j.get('equipment_name')
@@ -196,45 +199,45 @@ class create_view(CreateView):
         except Exception as e:
             conn.rollback()
             response['code'], response['msg'] = return_msg.S100, return_msg.fail_insert
-        return JsonResponse(response)
+            return JsonResponse(response, status=500)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
 class update_view(UpdateView):
     def post(self, request, *args, **kwargs):
         response = create_return_json()
-        if request.method == 'POST':
-            try:
-                # 从请求的 body 中获取 JSON 数据
-                json_data = request.body.decode('utf-8')
-                j = json.loads(json_data)
-                id = j.get('template_id')  # 模板id
+        try:
+            j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = return_msg.bad_request, return_msg.S400
+            return JsonResponse(response, status=400)
+        try:
+            # 从请求的 body 中获取 JSON 数据
+            id = j.get('template_id')  # 模板id
+            box = j.get('box')  # 字段显示区域
+            params = []
+            for in_box in box:
+                componets = j.get(in_box, [])
+                for it in componets:
+                    label = it.get('name')  # 字段组件标签
+                    component_type = it.get('component_type')  # 字段类型
+                    options = it.get('options')  # 字段选项
+                    component = component_to_json(type=component_type, options=options, label=label)  # 字段组件json
+                    params.append((id, component['key'], in_box, json.dumps(component), label, component_type))
 
-                box = j.get('box')  # 字段显示区域
+            # 执行原生 SQL 查询
+            with conn.cursor() as cur:
+                sql = 'insert into template_fields (template_id, field_id, in_box,component, label,type) ' \
+                      'values (%s,%s,%s,%s,%s,%s)'
+                cur.executemany(sql, params)
+                conn.commit()
+            return JsonResponse(response, status=200)
 
-                params = []
-                for in_box in box:
-                    componets = j.get(in_box, [])
-                    for it in componets:
-                        label = it.get('name')  # 字段组件标签
-                        component_type = it.get('component_type')  # 字段类型
-                        options = it.get('options')  # 字段选项
-                        component = component_to_json(type=component_type, options=options, label=label)  # 字段组件json
-                        params.append((id, component['key'], in_box, json.dumps(component), label, component_type))
+        except Exception as e:
+            conn.rollback()
+            print(e)
+            return JsonResponse({'error': str(e)}, status=500)
 
-                # 执行原生 SQL 查询
-                with conn.cursor() as cur:
-                    sql = 'insert into template_fields (template_id, field_id, in_box,component, label,type) ' \
-                          'values (%s,%s,%s,%s,%s,%s)'
-                    cur.executemany(sql, params)
-                    conn.commit()
-                return JsonResponse(response, status=200)
-
-            except Exception as e:
-                conn.rollback()
-                return JsonResponse({'error': str(e)}, status=500)
-        else:
-            return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 # 与load_template数据格式不同
 # preview数据格式是ngform格式，不做box的区分
@@ -244,161 +247,10 @@ class preview_view(DetailView):
         response = create_return_json()
         try:
             j = json.loads(request.body)
-            id = j.get('id')
-            with conn.cursor() as cur:
-                sql = 'select t.id,t.name,t.is_file,te.equipment_name ' \
-                      'from template t ' \
-                      'left join tp_equipment te on t.id = te.template_id ' \
-                      'where t.id=%s'
-                params = [id]
-                cur.execute(sql, params)
-                rows = rows_as_dict(cur)
-                data = {'id': rows[0]['id'], 'name': rows[0]['name'], 'equipment_name': []}
-                for row in rows:
-                    data['equipment_name'].append(row['equipment_name'])
-
-                sql = 'select tf.in_box,tf.component ' \
-                      'from template t ' \
-                      'left join template_fields tf on tf.template_id =t.id ' \
-                      'where t.id=%s'
-                params = [id]
-                cur.execute(sql, params)
-                rows = rows_as_dict(cur)
-                # 动态table的ngform格式
-                table = {
-                    "type": "batch",
-                    "label": "动态表格",
-                    "list": [],
-                    "options": {
-                        "scrollY": 0,
-                        "disabled": False,
-                        "hidden": False,
-                        "showLabel": False,
-                        "hideSequence": False,
-                        "labelWidth": "100",
-                        "labelPosition": "left",
-                        "customStyle": "",
-                        "customClass": "",
-                        "showItem": [
-                        ],
-                        "colWidth": {},
-                        "width": "100%",
-                        "dynamicHide": False,
-                        "dynamicHideValue": ""
-                    },
-                    "model": "data_box",
-                    "key": "data_box"
-                }
-                # 通过不同的区域来分组 每个组件
-                for row in rows:
-                    # 先取出组件数据
-                    try:
-                        component = json.loads(row['component'])
-                    except:
-                        component = None
-                    if component is None:
-                        continue
-                    # 判断box的区域位置
-                    box_name = row['in_box']
-                    if box_name not in data:
-                        data[box_name] = {'list': [],'config': {
-                            'labelPosition': "left",
-                            'labelWidth': 100,
-                            'size': "mini",
-                            'outputHidden': True,
-                            'hideRequiredMark': False,
-                            'syncLabelRequired': False,
-                            'customStyle': "",
-                        }}
-                    # data_box是动态table格式，需要特殊处理
-                    if box_name == 'data_box' :
-                        table['list'].append(component)
-                    else:
-                        data[box_name]['list'].append(component)
-                if 'data_box' in data:
-                    data['data_box']['list'].append(table)
-                response['data'] = data
-                return JsonResponse(response)
-        except Exception as e:
-            print(e)
-            response['code'], response['msg'] = return_msg.S100, return_msg.row_none
-            return JsonResponse(response,status=500)
-
-# # 与preview_template数据格式不同
-# # load数据格式是做box的区分,每个box的内容是ngform格式
-# @method_decorator(csrf_exempt, name='dispatch')
-# class TemplateLoadView(DetailView):
-#     def post(self, request, *args, **kwargs):
-#         response = create_return_json()
-#         try:
-#             j = json.loads(request.body)
-#             id = j.get('id')
-#             with conn.cursor() as cur:
-#
-#                 sql = 'select tf.in_box,tf.component ' \
-#                       'from template t ' \
-#                       'left join template_fields tf on tf.template_id =t.id ' \
-#                       'where t.id=%s'
-#                 params = [id]
-#                 cur.execute(sql, params)
-#                 rows = rows_as_dict(cur)
-#                 data = {}
-#                 # 通过不同的区域来分组 每个组件
-#                 for row in rows:
-#                     box_name = row['in_box']
-#                     if box_name not in data:
-#                         data[box_name] = {'list': [],'config': {
-#                             'labelPosition': "left",
-#                             'labelWidth': 100,
-#                             'size': "mini",
-#                             'outputHidden': True,
-#                             'hideRequiredMark': False,
-#                             'syncLabelRequired': False,
-#                             'customStyle': "",
-#                         }}
-#                     data[box_name]['list'].append(json.loads(row['component']))
-#                 response['data'] = data
-#         except Exception as e:
-#             response['code'], response['msg'] = return_msg.S100, return_msg.row_none
-#         return JsonResponse(response)
-#
-
-@method_decorator(csrf_exempt, name='dispatch')
-class delete_view(UpdateView):
-    def post(self, request, *args, **kwargs):
-        response = create_return_json()
+        except:
+            response['msg'], response['code'] = return_msg.bad_request, return_msg.S400
+            return JsonResponse(response, status=400)
         try:
-            j = json.loads(request.body)
-            ids = j.get('ids')
-            with conn.cursor() as cur:
-                sql = 'delete from template  where id=%s'
-                params = [[it] for it in ids]
-                cur.executemany(sql, params)
-                sql = 'delete from unit_template where template_id=%s'
-                params = [[it] for it in ids]
-                cur.executemany(sql, params)
-                sql = 'delete from tp_equipment where template_id=%s'
-                params = [[it] for it in ids]
-                cur.executemany(sql, params)
-                sql = 'delete from template_fields where template_id=%s'
-                params = [[it] for it in ids]
-                cur.executemany(sql, params)
-                conn.commit()
-
-        except self.model.DoesNotExist:
-            conn.rollback()
-            response['code'], response['msg'] = return_msg.S100, return_msg.fail_delete
-
-        return JsonResponse(response)
-
-# 导出模板文件，数据格式跟priview_template数据一致，
-# 加密生成rc文件
-@method_decorator(csrf_exempt, name='dispatch')
-class export_view(DetailView):
-    def post(self, request, *args, **kwargs):
-        response = create_return_json()
-        try:
-            j = json.loads(request.body)
             id = j.get('id')
             with conn.cursor() as cur:
                 sql = 'select t.id,t.name,t.is_file,te.equipment_name ' \
@@ -470,7 +322,134 @@ class export_view(DetailView):
                         table['list'].append(component)
                     else:
                         data[box_name]['list'].append(component)
-                data['data_box']['list'].append(table)
+                if 'data_box' in data:
+                    data['data_box']['list'].append(table)
+                response['data'] = data
+                return JsonResponse(response)
+        except Exception as e:
+            print(e)
+            response['code'], response['msg'] = return_msg.S100, return_msg.row_none
+            return JsonResponse(response, status=500)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class delete_view(UpdateView):
+    def post(self, request, *args, **kwargs):
+        response = create_return_json()
+        try:
+            j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = return_msg.bad_request, return_msg.S400
+            return JsonResponse(response, status=400)
+        try:
+            ids = j.get('ids')
+            with conn.cursor() as cur:
+                sql = 'delete from template  where id=%s'
+                params = [[it] for it in ids]
+                cur.executemany(sql, params)
+                sql = 'delete from unit_template where template_id=%s'
+                params = [[it] for it in ids]
+                cur.executemany(sql, params)
+                sql = 'delete from tp_equipment where template_id=%s'
+                params = [[it] for it in ids]
+                cur.executemany(sql, params)
+                sql = 'delete from template_fields where template_id=%s'
+                params = [[it] for it in ids]
+                cur.executemany(sql, params)
+                conn.commit()
+            return JsonResponse(response)
+        except self.model.DoesNotExist:
+            conn.rollback()
+            response['code'], response['msg'] = return_msg.S100, return_msg.fail_delete
+            return JsonResponse(response, status=500)
+
+
+# 导出模板文件，数据格式跟priview_template数据一致，
+# 加密生成rc文件
+@method_decorator(csrf_exempt, name='dispatch')
+class export_view(DetailView):
+    def post(self, request, *args, **kwargs):
+        response = create_return_json()
+        try:
+            j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = return_msg.bad_request, return_msg.S400
+            return JsonResponse(response, status=400)
+        try:
+            id = j.get('id')
+            with conn.cursor() as cur:
+                sql = 'select t.id,t.name,t.is_file,te.equipment_name ' \
+                      'from template t ' \
+                      'left join tp_equipment te on t.id = te.template_id ' \
+                      'where t.id=%s'
+                params = [id]
+                cur.execute(sql, params)
+                rows = rows_as_dict(cur)
+                data = {'id': rows[0]['id'], 'name': rows[0]['name'], 'equipment_name': []}
+                for row in rows:
+                    data['equipment_name'].append(row['equipment_name'])
+
+                sql = 'select tf.in_box,tf.component ' \
+                      'from template t ' \
+                      'left join template_fields tf on tf.template_id =t.id ' \
+                      'where t.id=%s'
+                params = [id]
+                cur.execute(sql, params)
+                rows = rows_as_dict(cur)
+                # 动态table的ngform格式
+                table = {
+                    "type": "batch",
+                    "label": "动态表格",
+                    "list": [],
+                    "options": {
+                        "scrollY": 0,
+                        "disabled": False,
+                        "hidden": False,
+                        "showLabel": False,
+                        "hideSequence": False,
+                        "labelWidth": "100",
+                        "labelPosition": "left",
+                        "customStyle": "",
+                        "customClass": "",
+                        "showItem": [
+                        ],
+                        "colWidth": {},
+                        "width": "100%",
+                        "dynamicHide": False,
+                        "dynamicHideValue": ""
+                    },
+                    "model": "data_box",
+                    "key": "data_box"
+                }
+                # 通过不同的区域来分组 每个组件
+                for row in rows:
+                    # 先取出组件数据
+                    try:
+                        component = json.loads(row['component'])
+                    except:
+                        component = None
+                    if component is None:
+                        continue
+                    # 判断box的区域位置
+                    box_name = row['in_box']
+                    if box_name not in data:
+                        data[box_name] = {'list': [], 'config': {
+                            'labelPosition': "left",
+                            'labelWidth': 100,
+                            'size': "mini",
+                            'outputHidden': True,
+                            'hideRequiredMark': False,
+                            'syncLabelRequired': False,
+                            'customStyle': "",
+                        }}
+                    # data_box是动态table格式，需要特殊处理
+                    if box_name == 'data_box':
+                        table['list'].append(component)
+                    else:
+                        data[box_name]['list'].append(component)
+                if 'data_box' in data:
+                    data['data_box']['list'].append(table)
+                response['data'] = data
 
                 cipher_suite = Fernet(FERNET_KEY)
 
@@ -487,13 +466,15 @@ class export_view(DetailView):
                 # 创建一个 HttpResponse 对象，并设置 Content-Disposition 头，使其作为文件下载
 
                 response = FileResponse(file)
-                response['Access-Control-Expose-Headers']='*'
-                response['Content-Type']='application/octet-stream'
-                #response['Content-Disposition'] = f'attachment; filename*=UTF-8\'\'{quote(file_name)}'
+                response['Access-Control-Expose-Headers'] = '*'
+                response['Content-Type'] = 'application/octet-stream'
+                response['Content-Disposition'] = f'attachment; filename*=UTF-8\'\'{quote(file_name)}'
                 return response
         except Exception as e:
             response['code'], response['msg'] = return_msg.S100, return_msg.row_none
-        return JsonResponse(response)
+            print(e)
+            return JsonResponse(response, status=500)
+
 
 # 导入模板文件
 @method_decorator(csrf_exempt, name='dispatch')
@@ -508,8 +489,10 @@ class import_view(DetailView):
             json_str = cipher_suite.decrypt(file_binary).decode()
             try:
                 response['data'] = json.loads(json_str)
+                return JsonResponse(response, status=200)
             except:
-                response['code'], response['msg'] = return_msg.S100, return_msg.row_none
+                response['code'], response['msg'] = return_msg.S100, return_msg.illegal_rc
+                return JsonResponse(response, status=500)
         except Exception as e:
-            response['code'], response['msg'] = return_msg.S100, return_msg.row_none
-        return JsonResponse(response)
+            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            return JsonResponse(response, status=500)

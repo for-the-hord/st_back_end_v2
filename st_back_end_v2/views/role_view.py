@@ -7,32 +7,14 @@
 @description: 
 """
 import json
-import jwt
-from datetime import datetime
-from collections import defaultdict
-import os
-import io
-import openpyxl
-from openpyxl.utils import get_column_letter
-from openpyxl.styles import Font, PatternFill, Alignment
-from cryptography.fernet import Fernet
-import pandas as pd
-from urllib.parse import quote
-
-from django.http import HttpResponse
-from django.contrib.staticfiles.storage import staticfiles_storage
-from django.conf import settings
-from django.core.files.storage import default_storage
 from django.db import connection as conn
-from django.http import JsonResponse, HttpRequest,FileResponse
+from django.http import JsonResponse, HttpRequest
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
-from django.templatetags.static import static
+from django.views.generic import ListView, CreateView, UpdateView, DetailView
 
-from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict, component_to_json, FERNET_KEY, \
-    list_to_tree
+from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict, list_to_tree
 
 
 # 获取角色列表
@@ -45,12 +27,11 @@ class list_view(ListView):
             j = json.loads(request.body)
         except:
             response['msg'], response['code'] = 'bad request！', return_msg.S400
-            return JsonResponse(response,status=400)
+            return JsonResponse(response, status=400)
         try:
             # 从请求的 body 中获取 JSON 数据
             page_size = j.get('page_size')
             page_index = j.get('page_index')
-            condition = j.get('condition', {})
 
             # 执行原生 SQL 查询
             with conn.cursor() as cur:
@@ -61,7 +42,7 @@ class list_view(ListView):
                 params = [page_size, (page_index - 1) * page_size]
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
-                rows = list_to_tree(rows,id_key='id',parent_key='parent_id')
+                rows = list_to_tree(rows, id_key='id', parent_key='parent_id')
 
                 response['data'] = rows
             return JsonResponse(response)
@@ -77,6 +58,10 @@ class item(DetailView):
         response = create_return_json()
         try:
             j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            return JsonResponse(response, status=400)
+        try:
             id = j.get('id')
             with conn.cursor() as cur:
                 sql = 'select t.id,t.name,t.is_file,' \
@@ -112,9 +97,12 @@ class item(DetailView):
                             data['equipment_name'].append(equipment_name)
 
                     response['data'] = data
+                    return JsonResponse(response, status=200)
         except Exception as e:
-            response['code'], response['msg'] = return_msg.S100, return_msg.row_none
-        return JsonResponse(response)
+            print(e)
+            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            return JsonResponse(response, status=500)
+
 
 # 新建角色接口
 @method_decorator(csrf_exempt, name='dispatch')
@@ -125,7 +113,7 @@ class create_view(CreateView):
             j = json.loads(request.body)
         except:
             response['msg'], response['code'] = 'bad request！', return_msg.S400
-            return JsonResponse(response,status=400)
+            return JsonResponse(response, status=400)
         try:
             # 从请求的 body 中获取 JSON 数据
             id = create_uuid()  # 模板id
@@ -145,7 +133,7 @@ class create_view(CreateView):
         except Exception as e:
             conn.rollback()
             response['code'], response['msg'] = return_msg.S100, return_msg.fail_insert
-            JsonResponse(response,status=500)
+            JsonResponse(response, status=500)
 
 
 # 修改角色接口
@@ -158,7 +146,7 @@ class update_view(UpdateView):
             j = json.loads(request.body)
         except:
             response['msg'], response['code'] = 'bad request！', return_msg.S400
-            return JsonResponse(response,status=400)
+            return JsonResponse(response, status=400)
         try:
             id = j.get('id')  # 模板id
             name = j.get('name')  # 字段显示区域
@@ -166,16 +154,16 @@ class update_view(UpdateView):
             # 执行原生 SQL 查询
             with conn.cursor() as cur:
                 sql = 'update role set name = %s where id = %s'
-                cur.execute(sql,[id,name])
+                cur.execute(sql, [id, name])
                 sql = 'delete from role_module where role_id=%s'
                 cur.execute(sql, [id])
                 sql = 'insert into role_module (role_id, module_id) values (%s,%s)'
-                params = [[id,it] for it in module]
-                cur.executemany(sql,params)
+                params = [[id, it] for it in module]
+                cur.executemany(sql, params)
                 conn.commit()
             return JsonResponse(response, status=200)
 
-        except :
+        except:
             conn.rollback()
             response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
             return JsonResponse(response, status=500)
@@ -190,7 +178,7 @@ class delete_view(DetailView):
             j = json.loads(request.body)
         except:
             response['msg'], response['code'] = 'bad request！', return_msg.S400
-            return JsonResponse(response,status=400)
+            return JsonResponse(response, status=400)
         try:
             id = j.get('id')
             with conn.cursor() as cur:
@@ -200,7 +188,7 @@ class delete_view(DetailView):
                 cur.execute(sql, [id])
                 conn.commit()
             return JsonResponse(response)
-        except :
+        except:
             conn.rollback()
             response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
             return JsonResponse(response, status=500)

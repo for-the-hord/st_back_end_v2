@@ -6,33 +6,22 @@
 @time: 2023/4/7 9:23
 @description:
 """
-import collections
+
 import json
-import jwt
 from datetime import datetime
-from collections import defaultdict
-import os
 import io
-import openpyxl
+
 from cryptography.fernet import Fernet
-from openpyxl.utils import get_column_letter
-from openpyxl.styles import Font, PatternFill, Alignment
 
-from django.http import HttpResponse, FileResponse
-import pandas as pd
+from django.http import FileResponse
 
-from django.contrib.staticfiles.storage import staticfiles_storage
-from django.conf import settings
-from django.core.files.storage import default_storage
 from django.db import connection as conn
-from django.http import JsonResponse, HttpRequest, Http404
+from django.http import JsonResponse, HttpRequest
 from django.utils.decorators import method_decorator
-from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
-from django.templatetags.static import static
 
-from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict, component_to_json, FERNET_KEY
+from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict, FERNET_KEY
 
 
 # 获取所有数据列表接口
@@ -43,22 +32,26 @@ class list_view(ListView):
         response = create_return_json()
         try:
             j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            return JsonResponse(response, status=400)
+        try:
             page_size = j.get('page_size')
             page_index = j.get('page_index')
-            condition = j.get('condition')
-            # {'unit_name':[],'formwork_id','equipment_name':[],'data_info':''}
+            condition = {} if (re := j.get('condition')) is None else re
+            # {'unit_name':[],'template_id','equipment_name':[],'data_info':''}
             params = []
 
             def dict_to_query_str(d: dict):
                 def convert_key(orginal):
                     if orginal == 'unit_name':
                         k = 'n.name'
-                    elif orginal == 'formwork_id':
+                    elif orginal == 'template_id':
                         k = 't.id'
                     elif orginal == 'equipment_name':
                         k = 'te.equipment_name'
                     elif orginal == 'data_info':
-                        k = 'd.data'
+                        k = 'rf.field_value'
                     else:
                         k = None
                     return k
@@ -80,11 +73,12 @@ class list_view(ListView):
             with conn.cursor() as cur:
                 sql = 'select count(distinct r.id) as count ' \
                       'from record r ' \
+                      'left join record_fields rf on r.id = rf.record_id ' \
                       'left join template t on t.id=r.template_id ' \
                       'left join unit n on n.name=r.unit_name ' \
                       'left join tp_equipment te on t.id = te.template_id and te.equipment_name=r.equipment_name ' \
                       f'{where_clause} ' \
-                      'order by t.id  '
+                      'order by r.update_date desc  '
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
                 count = rows[0]['count']
@@ -93,32 +87,41 @@ class list_view(ListView):
                       't.is_file,t.name as template_name,' \
                       'r.unit_name,' \
                       'r.equipment_name ' \
+                      'from (select distinct r.id ' \
                       'from record r ' \
+                      'left join record_fields rf on r.id = rf.record_id ' \
                       'left join template t on t.id=r.template_id ' \
                       'left join unit n on n.name=r.unit_name ' \
                       'left join tp_equipment te ' \
                       'on t.id = te.template_id and te.equipment_name=r.equipment_name ' \
-                      f'{where_clause} ' \
-                      'order by t.update_date desc ' \
+                      f'{where_clause} )u  ' \
+                      'left join record r on r.id=u.id ' \
+                      'left join template t on t.id=r.template_id ' \
+                      'left join unit n on n.name=r.unit_name ' \
+                      'left join tp_equipment te ' \
+                      'on t.id = te.template_id and te.equipment_name=r.equipment_name ' \
+                      'order by r.update_date desc ' \
                       'limit %s offset %s'
                 params += [page_size, (page_index - 1) * page_size]
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
                 data = []
                 for row in rows:
-                    record = {'id':row['id'],'name':row['name'],'template_id':row['template_id'],
+                    record = {'id': row['id'], 'name': row['name'], 'template_id': row['template_id'],
                               'create_date': datetime.fromtimestamp(row.get('create_date')).strftime(
                                   '%Y-%m-%d %H:%M:%S'),
-                              'update_date':datetime.fromtimestamp(row.get('update_date')).strftime(
-                                  '%Y-%m-%d %H:%M:%S'),'unit_name':row['unit_name'],'equipment_name':row['equipment_name']}
+                              'update_date': datetime.fromtimestamp(row.get('update_date')).strftime(
+                                  '%Y-%m-%d %H:%M:%S'), 'unit_name': row['unit_name'],
+                              'equipment_name': row['equipment_name']}
                     data.append(record)
 
                 # 构造返回数据
-                response['data'] = {'records': data, 'title': None,'total': count}
+                response['data'] = {'records': data, 'title': None, 'total': count}
+                return JsonResponse(response, status=200)
         except Exception as e:
             response['code'], response['msg'] = return_msg.S100, return_msg.params_error
-
-        return JsonResponse(response)
+            print(e)
+            return JsonResponse(response, status=500)
 
 
 # 获取单个数据信息
@@ -128,6 +131,10 @@ class item(DetailView):
         response = create_return_json()
         try:
             j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            return JsonResponse(response, status=400)
+        try:
             id = j.get('id')
             with conn.cursor() as cur:
                 sql = 'select r.id,r.name,r.template_id,r.create_date,r.update_date,r.unit_name,r.equipment_name,' \
@@ -149,9 +156,9 @@ class item(DetailView):
                                         'equipment_name': rows[0]['equipment_name'],
                                         'unit_name': rows[0].get('unit_name'),
                                         'create_date': datetime.fromtimestamp(rows[0].get('create_date')).strftime(
-                                  '%Y-%m-%d %H:%M:%S'),
-                                        'update_date':datetime.fromtimestamp(rows[0].get('update_date')).strftime(
-                                  '%Y-%m-%d %H:%M:%S')
+                                            '%Y-%m-%d %H:%M:%S'),
+                                        'update_date': datetime.fromtimestamp(rows[0].get('update_date')).strftime(
+                                            '%Y-%m-%d %H:%M:%S')
                                         }
                 # 使用一个字典存储'serial_no'的值作为键，字典的值作为值，用来收集每一个'serial_no'对应的字段
                 records = {}
@@ -165,12 +172,11 @@ class item(DetailView):
                         data_box[row['serial_no']][row['field_id']] = row['field_value']
 
                 records["data_box"] = data_box
-
-                response['data']['records']=records
-
+                response['data']['records'] = records
+            return JsonResponse(response, status=200)
         except Exception as e:
             response['code'], response['msg'] = return_msg.S100, return_msg.row_none
-        return JsonResponse(response)
+            return JsonResponse(response)
 
 
 # 添加一个数据列表接口
@@ -181,6 +187,10 @@ class create_view(CreateView):
         response = create_return_json()
         try:
             j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            return JsonResponse(response, status=400)
+        try:
             name = j.get('name')
             template_id = j.get('template_id')
             equipment_name = j.get('equipment_name')
@@ -195,10 +205,11 @@ class create_view(CreateView):
                 cur.execute(sql, params)
                 conn.commit()
                 response['data'] = {'id': id}
+                return JsonResponse(response)
         except Exception as e:
             conn.rollback()
             response['code'], response['msg'] = return_msg.S100, return_msg.fail_insert
-        return JsonResponse(response)
+            return JsonResponse(response, status=500)
 
 
 # 修改一个数据信息接口
@@ -209,6 +220,10 @@ class update_view(UpdateView):
         response = create_return_json()
         try:
             j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            return JsonResponse(response, status=400)
+        try:
             id = j.get('id')
             records = j.get('records')
             params = []
@@ -224,16 +239,16 @@ class update_view(UpdateView):
 
             with conn.cursor() as cur:
                 sql = 'delete from record_fields where record_id=%s'
-                cur.execute(sql,[id])
+                cur.execute(sql, [id])
                 sql = 'insert into record_fields (record_id,serial_no,field_id,field_value) ' \
                       'values (%s,%s,%s,%s)'
                 cur.executemany(sql, params)
                 conn.commit()
-
+            return JsonResponse(response)
         except Exception as e:
             conn.rollback()
-            response['code'], response['msg'] = return_msg.S100, return_msg.fail_update
-        return JsonResponse(response)
+            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            return JsonResponse(response, status=500)
 
 
 # 删除一个或者多个数据信息接口
@@ -244,6 +259,10 @@ class delete_view(DeleteView):
         response = create_return_json()
         try:
             j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            return JsonResponse(response, status=400)
+        try:
             ids = j.get('ids')
             with conn.cursor() as cur:
                 # 先删除从表
@@ -255,10 +274,12 @@ class delete_view(DeleteView):
                 sql = 'delete from record  where id = %s'
                 cur.executemany(sql, params)
                 conn.commit()
+            return JsonResponse(response)
         except self.model.DoesNotExist:
             conn.rollback()
             response['code'], response['msg'] = return_msg.S100, return_msg.fail_delete
-        return JsonResponse(response)
+            return JsonResponse(response, status=500)
+
 
 # 导出模板文件，数据格式跟priview_template数据一致，
 # 加密生成rc文件
@@ -268,7 +289,11 @@ class export_view(DetailView):
         response = create_return_json()
         try:
             j = json.loads(request.body)
-            id = j.get('id') # 数据id
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            return JsonResponse(response, status=400)
+        try:
+            id = j.get('id')  # 数据id
             with conn.cursor() as cur:
                 sql = 'select r.id,r.name,r.template_id,r.create_date,r.update_date,r.unit_name,r.equipment_name,' \
                       'rf.field_id,rf.field_value,rf.serial_no ' \
@@ -282,17 +307,17 @@ class export_view(DetailView):
                 if len(rows) == 0:
                     response['code'], response['msg'] = return_msg.S100, return_msg.row_none
                 else:
-                    data= {'id': rows[0].get('id'),
-                                        'name': rows[0].get('name'),
-                                        'template_id': rows[0].get('template_id'),
-                                        'records': [],
-                                        'equipment_name': rows[0]['equipment_name'],
-                                        'unit_name': rows[0].get('unit_name'),
-                                        'create_date': datetime.fromtimestamp(rows[0].get('create_date')).strftime(
-                                            '%Y-%m-%d %H:%M:%S'),
-                                        'update_date': datetime.fromtimestamp(rows[0].get('update_date')).strftime(
-                                            '%Y-%m-%d %H:%M:%S')
-                                        }
+                    data = {'id': rows[0].get('id'),
+                            'name': rows[0].get('name'),
+                            'template_id': rows[0].get('template_id'),
+                            'records': [],
+                            'equipment_name': rows[0]['equipment_name'],
+                            'unit_name': rows[0].get('unit_name'),
+                            'create_date': datetime.fromtimestamp(rows[0].get('create_date')).strftime(
+                                '%Y-%m-%d %H:%M:%S'),
+                            'update_date': datetime.fromtimestamp(rows[0].get('update_date')).strftime(
+                                '%Y-%m-%d %H:%M:%S')
+                            }
                 # 使用一个字典存储'serial_no'的值作为键，字典的值作为值，用来收集每一个'serial_no'对应的字段
                 records = {}
                 data_box = []
@@ -323,13 +348,14 @@ class export_view(DetailView):
                 # 创建一个 HttpResponse 对象，并设置 Content-Disposition 头，使其作为文件下载
 
                 response = FileResponse(file)
-                response['Access-Control-Expose-Headers']='*'
-                response['Content-Type']='application/octet-stream'
+                response['Access-Control-Expose-Headers'] = '*'
+                response['Content-Type'] = 'application/octet-stream'
                 # response['Content-Disposition'] = f'attachment; filename*=UTF-8\'\'{quote(file_name)}'
                 return response
         except Exception as e:
             response['code'], response['msg'] = return_msg.S100, return_msg.row_none
-        return JsonResponse(response)
+            return JsonResponse(response, status=500)
+
 
 # 导入数据文件
 @method_decorator(csrf_exempt, name='dispatch')
@@ -344,8 +370,10 @@ class import_view(DetailView):
             json_str = cipher_suite.decrypt(file_binary).decode()
             try:
                 response['data'] = json.loads(json_str)
+                return JsonResponse(response)
             except:
-                response['code'], response['msg'] = return_msg.S100, return_msg.row_none
+                response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+                return JsonResponse(response, status=500)
         except Exception as e:
-            response['code'], response['msg'] = return_msg.S100, return_msg.row_none
-        return JsonResponse(response)
+            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            return JsonResponse(response, status=500)

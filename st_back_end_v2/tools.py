@@ -7,7 +7,11 @@
 @description: 
 """
 import uuid
+import jwt
 
+
+from django.db import connection as conn
+from django.http import JsonResponse, HttpRequest,Http404
 
 class MSG:
     S200 = 200  # 成功返回
@@ -338,8 +342,9 @@ def process_radio(json, options):
     json['key'] = f'{type}_{str(uuid.uuid4().hex)}'
     json['model'] = f'{type}_{str(uuid.uuid4().hex)}'
     json['options']['valueKey'] = 'value'
+    json['defaultValue'] = options.get('default_value')
     # radio 组件 default为数组
-    li = [{'value': it, 'label': it} for it in options.get('default_value')]
+    li = [{'value': it, 'label': it} for it in options.get('list')]
     json['options']['options'] = li
 
 
@@ -470,3 +475,49 @@ def find_parent(root, node):
         p['root_label'] = root
         if p['children']:
             find_parent(root, p['children'])
+
+
+def check_token(view_func):
+    def wrapped(request, *args, **kwargs):
+        # 获取前端传过来的token
+        response = create_return_json()
+        token = request.headers.get('AUTHORIZATION', '').split(' ')
+        if len(token) > 1:
+            token = token[1]
+        else:
+            return JsonResponse(response, status=401)
+        try:
+            # 解码token
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=['HS256'])
+
+            # 根据payload中的user_id进行用户认证
+            user_id = payload['user_id']
+            with conn.cursor() as cur:
+                sql = 'select name from user u ' \
+                      'where u.id=%s'
+                params = [user_id]
+                cur.execute(sql, params)
+                rows = rows_as_dict(cur)
+            user = User.objects.get(id=user_id)
+
+            # 将user添加到请求中，方便视图函数中使用
+            request.user = user
+
+            return view_func(request, *args, **kwargs)
+
+        except jwt.ExpiredSignatureError:
+            # token过期
+            response['code'], response['msg'] = return_msg.S401, return_msg.token_expired
+            return JsonResponse(response, status=401)
+
+        except jwt.InvalidSignatureError:
+            # token无效
+            response['code'], response['msg'] = return_msg.S401, return_msg.token_invalid
+            return JsonResponse(response, status=401)
+
+        except :
+            # 用户不存在
+            response['code'], response['msg'] = return_msg.S401, return_msg.no_user
+            return JsonResponse(response, status=401)
+
+    return wrapped

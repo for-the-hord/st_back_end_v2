@@ -8,30 +8,17 @@
 """
 import json
 import jwt
-from datetime import datetime
-from collections import defaultdict
-import os
-import io
 
-import openpyxl
-from openpyxl.utils import get_column_letter
-from openpyxl.styles import Font, PatternFill, Alignment
-
-from django.http import HttpResponse
-import pandas as pd
-
-from django.contrib.staticfiles.storage import staticfiles_storage
 from django.conf import settings
-from django.core.files.storage import default_storage
+
 from django.db import connection as conn
-from django.http import JsonResponse, HttpRequest, Http404
+from django.http import JsonResponse, HttpRequest
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
-from django.templatetags.static import static
+from django.views.generic import UpdateView
 
-from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict, list_to_tree
+from ..tools import return_msg, create_return_json, rows_as_dict, list_to_tree
 
 
 # 登录
@@ -44,7 +31,7 @@ class login(View):
             j = json.loads(request.body)
         except:
             response['msg'], response['code'] = 'bad request！', return_msg.S400
-            return JsonResponse(response,status=400)
+            return JsonResponse(response, status=400)
 
         if j is not None:
             account = str(j.get('account', None)).replace(' ', '')
@@ -69,9 +56,10 @@ class login(View):
                 return JsonResponse(response, status=200)
             else:
                 response['msg'], response['code'] = '账户或密码错误！', return_msg.S100
-                return JsonResponse(response ,status=400)
+                return JsonResponse(response, status=400)
         else:
-            return JsonResponse(response,status=400)
+            return JsonResponse(response, status=400)
+
 
 # 获取单位列表
 @method_decorator(csrf_exempt, name='dispatch')
@@ -85,17 +73,24 @@ class Login_unit_list_view(View):
             response['data'] = rows
         return JsonResponse(response)
 
+
 # 登录
 class login_without(View):
     def post(self, request: HttpRequest):
         response = create_return_json()
-        if (get_json := json.loads(request.body)) is not None:
-            unit_name = get_json.get('unit_name', None)
-            report_date = get_json.get('date')
+        try:
+            j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            return JsonResponse(response, status=400)
+        if j is not None:
+            unit_name = j.get('unit_name', None)
+            report_date = j.get('date')
             response['data'] = {'unit_name': unit_name}
+            return JsonResponse(response)
         else:
             response['code'], response['msg'] = return_msg.S100, return_msg.params_error
-        return JsonResponse(response)
+            return JsonResponse(response, status=400)
 
 
 # 修改系统名称接口
@@ -104,11 +99,12 @@ class sys_info_update_view(UpdateView):
 
     def post(self, request, *args, **kwargs):
         response = create_return_json()
+
         try:
             j = json.loads(request.body)
         except:
             response['msg'], response['code'] = 'bad request！', return_msg.S400
-            return JsonResponse(response,status=400)
+            return JsonResponse(response, status=400)
         try:
             name = j.get('sys_title')
             with conn.cursor() as cur:
@@ -122,7 +118,6 @@ class sys_info_update_view(UpdateView):
         return JsonResponse(response)
 
 
-
 # 获取用户菜单
 @method_decorator(csrf_exempt, name='dispatch')
 class get_router(UpdateView):
@@ -131,6 +126,10 @@ class get_router(UpdateView):
         response = create_return_json()
         try:
             j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            return JsonResponse(response, status=400)
+        try:
             user_id = j.get('user_id')
             with conn.cursor() as cur:
                 sql = 'select m.id,m.title,m.path,m.parent_id,m.icon from module m ' \
@@ -141,8 +140,9 @@ class get_router(UpdateView):
                 params = [user_id]
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
-                data = list_to_tree(rows,id_key='id',parent_key='parent_id',parent_value='0')
+                data = list_to_tree(rows, id_key='id', parent_key='parent_id', parent_value='0')
                 response['data'] = data
+                return JsonResponse(response)
         except Exception as e:
-            response['code'], response['msg'] = return_msg.S100, return_msg.fail_update
-        return JsonResponse(response)
+            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            return JsonResponse(response, status=500)
