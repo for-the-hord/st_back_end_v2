@@ -133,11 +133,11 @@ class get_router(UpdateView):
             j = json.loads(request.body)
             user_id = j.get('user_id')
             with conn.cursor() as cur:
-                sql = 'select m.id,m.title,m.path,m.parent_id from module m ' \
+                sql = 'select m.id,m.title,m.path,m.parent_id,m.icon from module m ' \
                       'left join role_module rm on m.id = rm.module_id ' \
                       'left join role r on rm.role_id = r.id ' \
                       'left join user_role ur on r.id = ur.role_id ' \
-                      'where ur.user_id=%s'
+                      'where ur.user_id=%s order by m.sorted_no'
                 params = [user_id]
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
@@ -146,4 +146,3 @@ class get_router(UpdateView):
         except Exception as e:
             response['code'], response['msg'] = return_msg.S100, return_msg.fail_update
         return JsonResponse(response)
-

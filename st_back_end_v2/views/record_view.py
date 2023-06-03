@@ -76,14 +76,32 @@ class list_view(ListView):
                                 params.extend(value)
                 return ' and '.join(conditions)
 
-            # where_clause = '' if (where_sql := dict_to_query_str(condition)) == '' else 'where ' + where_sql
+            where_clause = '' if (where_sql := dict_to_query_str(condition)) == '' else 'where ' + where_sql
             with conn.cursor() as cur:
+                sql = 'select count(distinct r.id) as count ' \
+                      'from record r ' \
+                      'left join template t on t.id=r.template_id ' \
+                      'left join unit n on n.name=r.unit_name ' \
+                      'left join tp_equipment te on t.id = te.template_id and te.equipment_name=r.equipment_name ' \
+                      f'{where_clause} ' \
+                      'order by t.id  '
+                cur.execute(sql, params)
+                rows = rows_as_dict(cur)
+                count = rows[0]['count']
+
                 sql = 'select r.id,r.name,r.template_id,r.create_date,r.update_date,' \
                       't.is_file,t.name as template_name,' \
                       'r.unit_name,' \
                       'r.equipment_name ' \
                       'from record r ' \
-                      'left join template t on r.template_id=t.id order by create_date desc'
+                      'left join template t on t.id=r.template_id ' \
+                      'left join unit n on n.name=r.unit_name ' \
+                      'left join tp_equipment te ' \
+                      'on t.id = te.template_id and te.equipment_name=r.equipment_name ' \
+                      f'{where_clause} ' \
+                      'order by t.update_date desc ' \
+                      'limit %s offset %s'
+                params += [page_size, (page_index - 1) * page_size]
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
                 data = []
@@ -96,8 +114,7 @@ class list_view(ListView):
                     data.append(record)
 
                 # 构造返回数据
-                response['data'] = {'records': data, 'title': None,
-                                    'total': 100}
+                response['data'] = {'records': data, 'title': None,'total': count}
         except Exception as e:
             response['code'], response['msg'] = return_msg.S100, return_msg.params_error
 

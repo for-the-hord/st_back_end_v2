@@ -83,37 +83,66 @@ from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict, c
 #     return wrapped
 
 # 添加字段接口
+
+@method_decorator(csrf_exempt, name='dispatch')
+class list_view(ListView):
+    def post(self, request, *args, **kwargs):
+        response = create_return_json()
+        try:
+            j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            return JsonResponse(response,status=400)
+        try:
+            # 从请求的 body 中获取 JSON 数据
+            id = j.get('template_id')  # 模板id
+            # 执行原生 SQL 查询
+            with conn.cursor() as cur:
+                sql = 'select tf.field_id,tf.in_box,tf.label,tf.type ' \
+                      'from template_fields tf ' \
+                      'where template_id=%s'
+                cur.execute(sql, [id])
+                rows = rows_as_dict(cur)
+                response['data'] = rows
+            return JsonResponse(response, status=200)
+        except Exception as e:
+            print(e)
+            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            return JsonResponse(response, status=500)
+
+
 @method_decorator(csrf_exempt, name='dispatch')
 class create_view(CreateView):
     def post(self, request, *args, **kwargs):
         response = create_return_json()
-        if request.method == 'POST':
-            try:
-                # 从请求的 body 中获取 JSON 数据
-                json_data = request.body.decode('utf-8')
-                j = json.loads(json_data)
-                id = j.get('template_id')  # 模板id
-                in_box = j.get('box')  # 字段显示区域
-                label = j.get('name')  # 字段组件标签
-                component_type = j.get('component_type')  # 字段类型
-                options = j.get('options')  # 字段选项
-                component = component_to_json(type=component_type, options=options,label = label)  # 字段组件json
-                params=[id, component['key'], in_box, json.dumps(component), label, component_type]
+        try:
+            j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            return JsonResponse(response,status=400)
+        try:
+            # 从请求的 body 中获取 JSON 数据
+            id = j.get('template_id')  # 模板id
+            in_box = j.get('box')  # 字段显示区域
+            label = j.get('name')  # 字段组件标签
+            component_type = j.get('component_type')  # 字段类型
+            options = j.get('options')  # 字段选项
+            component = component_to_json(type=component_type, options=options,label = label)  # 字段组件json
+            params=[id, component['key'], in_box, json.dumps(component), label, component_type]
 
-                # 执行原生 SQL 查询
-                with conn.cursor() as cur:
-                    sql = 'insert into template_fields (template_id, field_id, in_box,component, label,type) ' \
-                          'values (%s,%s,%s,%s,%s,%s)'
-                    cur.execute(sql, params)
-                    conn.commit()
-                    response['data'] = {'template_id':id,'field_id':component['key'],'name':label,'component_type':component_type,'box':in_box}
-                return JsonResponse(response, status=200)
+            # 执行原生 SQL 查询
+            with conn.cursor() as cur:
+                sql = 'insert into template_fields (template_id, field_id, in_box,component, label,type) ' \
+                      'values (%s,%s,%s,%s,%s,%s)'
+                cur.execute(sql, params)
+                conn.commit()
+                response['data'] = {'template_id':id,'field_id':component['key'],'name':label,'component_type':component_type,'box':in_box}
+            return JsonResponse(response, status=200)
 
-            except Exception as e:
-                conn.rollback()
-                return JsonResponse({'error': str(e)}, status=500)
-        else:
-            return JsonResponse({'error': 'Invalid request method'}, status=405)
+        except Exception as e:
+            conn.rollback()
+            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            return JsonResponse(response, status=500)
 
 # 删除字段接口
 @method_decorator(csrf_exempt, name='dispatch')
@@ -121,9 +150,12 @@ class delete_view(DeleteView):
     def post(self, request, *args, **kwargs):
         response = create_return_json()
         try:
+            j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            return JsonResponse(response,status=400)
+        try:
             # 从请求的 body 中获取 JSON 数据
-            json_data = request.body.decode('utf-8')
-            j = json.loads(json_data)
             tempalate_id = j.get('template_id')
             field_id = j.get('field_id')
 
@@ -132,8 +164,8 @@ class delete_view(DeleteView):
                 params = [tempalate_id,field_id]
                 cur.execute(sql, params)
                 conn.commit()
-            return JsonResponse(response)
+            return JsonResponse(response,status=200)
         except Exception as e:
             conn.rollback()
-            response['code'], response['msg'] = return_msg.S100, return_msg.fail_insert
-        return JsonResponse(response)
+            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            return JsonResponse(response,status==500)

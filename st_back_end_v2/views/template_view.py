@@ -45,28 +45,49 @@ class list_view(ListView):
             response['msg'], response['code'] = 'bad request！', return_msg.S400
             return JsonResponse(response,status=400)
         try:
-            # 从请求的 body 中获取 JSON 数据
-            page_size = j.get('page_size')
-            page_index = j.get('page_index')
-            condition = j.get('condition', {})
+                page_size = j.get('page_size')
+                page_index = j.get('page_index')
+                condition = j.get('condition', {})
 
-            # 执行原生 SQL 查询
-            with conn.cursor() as cur:
-                sql = "select id, name, create_date, update_date from  template limit %s offset %s"
-                params = [page_size, (page_index - 1) * page_size]
-                cur.execute(sql, params)
-                rows = rows_as_dict(cur)
-                data = []
-                for row in rows:
-                    record = {'id': row['id'], 'name': row['name'],
-                              'create_date': datetime.fromtimestamp(row.get('create_date')).strftime(
-                                  '%Y-%m-%d %H:%M:%S'),
-                              'update_date': datetime.fromtimestamp(row.get('update_date')).strftime(
-                                  '%Y-%m-%d %H:%M:%S')}
-                    data.append(record)
-                response['data'] = data
-            return JsonResponse(response)
+                def convert_key(orginal):
+                    if orginal == 'template_name':
+                        k = 't.name'
+                    else:
+                        k = None
+                    return k
+                limit_clause = '' if page_size == 0 and page_index == 0 else 'limit %s offset %s'
+                where_clause = '' if len(condition) == 0 else 'where ' + " AND ".join(
+                    [f"{convert_key(key)} LIKE %s" for key in condition.keys()])
+                where_values = ["%" + value + "%" for value in condition.values()]
+                with conn.cursor() as cur:
+                    params = where_values
+                    sql = f'select count(*) as count from template t {where_clause}'
+                    cur.execute(sql, params)
+                    rows = rows_as_dict(cur)
+                    count = rows[0]['count']
+                    sql = 'select t.id,t.name as template_name,t.is_file,' \
+                          't.create_date,t.update_date ' \
+                          'from template t  ' \
+                          f'{where_clause} ' \
+                          f'order by t.update_date desc {limit_clause}'
+                    params = where_values + [page_size, (page_index - 1) * page_size] \
+                        if limit_clause != '' else where_values
+                    cur.execute(sql, params)
+                    rows = rows_as_dict(cur)
+                template_list = [
+                    {'id': it.get('id'), 'name': it.get('template_name'),
+                     'is_file': it.get('is_fle'),
+                     'create_date': datetime.fromtimestamp(it.get('create_date')).strftime(
+                         '%Y-%m-%d %H:%M:%S'),
+                     'update_date': datetime.fromtimestamp(0 if (re := it.get('update_date')) is None else re).strftime(
+                         '%Y-%m-%d %H:%M:%S')} for it in rows]
+
+                # 构造返回数据
+                response['data'] = {'records': template_list, 'title': None,
+                                    'total': count}
+                return JsonResponse(response)
         except Exception as e:
+            print(e)
             return JsonResponse(response, status=500)
 
 
@@ -294,11 +315,14 @@ class preview_view(DetailView):
                         table['list'].append(component)
                     else:
                         data[box_name]['list'].append(component)
-                data['data_box']['list'].append(table)
+                if 'data_box' in data:
+                    data['data_box']['list'].append(table)
                 response['data'] = data
+                return JsonResponse(response)
         except Exception as e:
+            print(e)
             response['code'], response['msg'] = return_msg.S100, return_msg.row_none
-        return JsonResponse(response)
+            return JsonResponse(response,status=500)
 
 # # 与preview_template数据格式不同
 # # load数据格式是做box的区分,每个box的内容是ngform格式

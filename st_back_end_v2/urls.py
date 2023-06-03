@@ -23,6 +23,7 @@ urlpatterns = [
     path('api/getUnitLogin', login_view.Login_unit_list_view.as_view()),
     path('api/user/login', login_view.login_without.as_view()),
     path('api/update_sys_info', login_view.sys_info_update_view.as_view()),
+    path('api/get_router', login_view.get_router.as_view()),
 
     path('api/get_user_list', user_view.list_view.as_view()),
     path('api/add_user', user_view.create_view.as_view()),
