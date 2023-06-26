@@ -10,11 +10,10 @@ import json
 from django.db import connection as conn
 from django.http import JsonResponse, HttpRequest
 from django.utils.decorators import method_decorator
-from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
 
-from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict, list_to_tree
+from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict
 
 
 # 获取角色列表
@@ -32,19 +31,20 @@ class list_view(ListView):
             # 从请求的 body 中获取 JSON 数据
             page_size = j.get('page_size')
             page_index = j.get('page_index')
-
+            limit_clause = '' if page_size == 0 and page_index == 0 else 'limit %s offset %s'
             # 执行原生 SQL 查询
             with conn.cursor() as cur:
-                sql = "select u.id,u.name,m.id,m.parent_id,m.parent_id,m.path,m.title " \
-                      "from (select r.id,r.name from role r limit %s offset %s) u " \
-                      "left join role_module rm on u.id=rm.role_id " \
-                      "left join  module m on rm.module_id = m.id "
-                params = [page_size, (page_index - 1) * page_size]
+                sql = 'select count(*) as count from role '
+                cur.execute(sql)
+                rows = rows_as_dict(cur)
+                count = rows[0]['count']
+
+                sql = f'select r.id,r.name from role r {limit_clause} '
+                params = [page_size, (page_index - 1) * page_size] \
+                    if limit_clause != '' else []
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
-                rows = list_to_tree(rows, id_key='id', parent_key='parent_id')
-
-                response['data'] = rows
+                response['data'] = {'records': rows, 'title': None, 'total': count}
             return JsonResponse(response)
         except Exception as e:
             return JsonResponse(response, status=500)
@@ -64,40 +64,20 @@ class item(DetailView):
         try:
             id = j.get('id')
             with conn.cursor() as cur:
-                sql = 'select t.id,t.name,t.is_file,' \
-                      't.create_date as create_date,' \
-                      't.update_date as update_date,' \
-                      'te.equipment_name,' \
-                      'ut.unit_name ' \
-                      'from template t ' \
-                      'left join tp_equipment te on t.id = te.template_id ' \
-                      'left join unit_template ut on t.id = ut.template_id ' \
-                      'where t.id=%s'
+
+                sql = 'select r.id,r.name,' \
+                      'm.id as module_id,m.parent_id, m.title, m.type, m.path, m.icon '\
+                      'from role r ' \
+                      'left join role_module rm on r.id = rm.role_id ' \
+                      'left join module m on rm.module_id = m.id ' \
+                      'where r.id=%s'
                 params = [id]
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
-                # 构造返回数据
-                if len(rows) == 0:
-                    response['code'], response['msg'] = return_msg.S100, return_msg.row_none
-                else:
-                    data = {
-                        'id': id,
-                        'name': rows[0]['name'],
-                        'unit_name': [],
-                        'equipment_name': []
-                    }
-                    for row in rows:
-                        unit_name = row['unit_name']
-                        equipment_name = row['equipment_name']
-
-                        if unit_name is not None:
-                            data['unit_name'].append(unit_name)
-
-                        if equipment_name is not None:
-                            data['equipment_name'].append(equipment_name)
-
-                    response['data'] = data
-                    return JsonResponse(response, status=200)
+                data = {'id':rows[0]['id'],'name':rows[0]['name'],'menu':[]}
+                data['menu'] = [it['module_id'] for it in rows]
+                response['data'] = data
+                return JsonResponse(response, status=200)
         except Exception as e:
             print(e)
             response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
@@ -154,7 +134,7 @@ class update_view(UpdateView):
             # 执行原生 SQL 查询
             with conn.cursor() as cur:
                 sql = 'update role set name = %s where id = %s'
-                cur.execute(sql, [id, name])
+                cur.execute(sql, [name,id])
                 sql = 'delete from role_module where role_id=%s'
                 cur.execute(sql, [id])
                 sql = 'insert into role_module (role_id, module_id) values (%s,%s)'
@@ -192,3 +172,4 @@ class delete_view(DetailView):
             conn.rollback()
             response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
             return JsonResponse(response, status=500)
+

@@ -30,7 +30,7 @@ ALLOWED_HOSTS = ['*']
 
 
 # Application definition
-
+# pip install django-cors-headers
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'corsheaders',
+    'st_back_end_v2'
 ]
 
 MIDDLEWARE = [
@@ -58,8 +59,7 @@ ROOT_URLCONF = 'st_back_end_v2.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [os.path.join(BASE_DIR, 'templates')]
-        ,
+        'DIRS': [os.path.join(BASE_DIR, 'front_end/dist')],  # 前端打包项目路径
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -73,7 +73,6 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'st_back_end_v2.wsgi.application'
-
 
 # Database
 # https://docs.djangoproject.com/en/4.1/ref/settings/#databases
@@ -89,6 +88,10 @@ DATABASES = {
     }
 }
 
+# 前端静态文件配置
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, "front_end/dist/static"),
+]
 
 # Password validation
 # https://docs.djangoproject.com/en/4.1/ref/settings/#auth-password-validators

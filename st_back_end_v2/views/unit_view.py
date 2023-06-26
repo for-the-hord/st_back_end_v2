@@ -21,7 +21,7 @@ from django.http import JsonResponse, HttpRequest
 from django.utils.decorators import method_decorator
 
 from django.views.decorators.csrf import csrf_exempt
-from django.views.generic import ListView, CreateView, UpdateView, DeleteView, DetailView
+from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 
 
 from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict
@@ -52,7 +52,7 @@ class list_view(ListView):
             where_clause = '' if len(condition) == 0 else 'where ' + " AND ".join(
                 [f"{convert_key(key)} LIKE %s" for key in condition.keys()])
             where_values = ["%" + value + "%" for value in condition.values()]
-
+            limit_clause = '' if page_size == 0 and page_index == 0 else 'limit %s offset %s'
             with conn.cursor() as cur:
                 params = where_values
                 sql = f'select count(*) as count from unit n {where_clause}'
@@ -61,11 +61,12 @@ class list_view(ListView):
                 count = rows[0]['count']
                 sql = 'select u.id, u.name,' \
                       't.id as template_id,t.name as template_name ' \
-                      f'from (select distinct id from unit {where_clause} order by id limit %s offset %s) n ' \
+                      f'from (select distinct id from unit {where_clause} order by id {limit_clause}) n ' \
                       'left join unit u on n.id=u.id ' \
                       'left join unit_template ut on u.name=ut.unit_name ' \
                       'left join template t on ut.template_id=t.id '
-                params = where_values + [page_size, (page_index - 1) * page_size]
+                params = where_values + [page_size, (page_index - 1) * page_size] \
+                    if limit_clause != '' else where_values
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
                 data_list = rows
@@ -91,40 +92,6 @@ class list_view(ListView):
 
         return JsonResponse(response)
 
-#
-# # 获取单个单位信息
-# @method_decorator(csrf_exempt, name='dispatch')
-# class item(DetailView):
-#     def post(self, request, *args, **kwargs):
-#         response = create_return_json()
-#         try:
-#             j = json.loads(request.body)
-#         except:
-#             response['msg'], response['code'] = 'bad request！', return_msg.S400
-#             return JsonResponse(response,status=400)
-#         try:
-#             with conn.cursor() as cur:
-#                 sql = 'select t.id as template_id,t.is_file,t.name as template_name,' \
-#                       'n.id,' \
-#                       'n.name  ' \
-#                       'from unit n ' \
-#                       'left join template t on n.name = t.name ' \
-#                       'where n.id=%s'
-#                 params = [j.get('id')]
-#                 cur.execute(sql, params)
-#                 rows = rows_as_dict(cur)
-#                 # 构造返回数据
-#                 if len(rows) == 0:
-#                     response['code'], response['msg'] = return_msg.S100, return_msg.row_none
-#                 else:
-#                     response['data'] = {'id': rows[0].get('id'), 'name': rows[0].get('name'),
-#                                              'template_id':rows[0].get('template_id'),
-#                                              'template_name': rows[0].get('template_name')
-#                                              }
-#         except Exception as e:
-#             response['code'], response['msg'] = return_msg.S100, return_msg.row_none
-#             return JsonResponse(response)
-
 
 # 添加一个单位接口
 @method_decorator(csrf_exempt, name='dispatch')
@@ -149,12 +116,12 @@ class create_view(CreateView):
                 count = rows[0]['count']
                 if count !=0:
                     response['code'], response['msg'] = return_msg.S100, return_msg.exist_unit
-                    return JsonResponse(response)
+                    return JsonResponse(response,status=400)
                 sql = 'insert into unit (id,name) values(%s,%s)'
                 params = [id, name]
                 cur.execute(sql, params)
                 sql = 'insert into unit_template (unit_name,template_id) values (%s,%s)'
-                params = [[id, it] for it in template_ids]
+                params = [[name, it] for it in template_ids]
                 cur.executemany(sql, params)
                 conn.commit()
             return JsonResponse(response)
@@ -187,7 +154,7 @@ class update_view(UpdateView):
                 count = rows[0]['count']
                 if count !=0:
                     response['code'], response['msg'] = return_msg.S100, return_msg.exist_unit
-                    return JsonResponse(response)
+                    return JsonResponse(response,status=400)
                 sql = 'delete from unit_template  where unit_name=%s'
                 params = [name]
                 cur.execute(sql, params)

@@ -7,6 +7,8 @@
 @description:
 """
 import json
+import os
+
 import jwt
 
 from django.conf import settings
@@ -53,6 +55,21 @@ class login(View):
                                                               'user_id': user.get('id'),
                                                               'unit_name': user.get('unit_name'),
                                                               'sys_title': user.get('sys_title')}
+                with conn.cursor() as cur:
+                    sql = 'select u.name from unit u'
+                    cur.execute(sql)
+                    rows = rows_as_dict(cur)
+                    data = {'unit':[]}
+                    data['unit'] = [it['name'] for it in rows]
+                    # 获取当前项目的根目录
+                    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+                    # 生成文件的路径
+                    file_path = os.path.join(BASE_DIR, 'unit.json')
+
+                    # 将数据写入到文件
+                    with open(file_path, "w",encoding='utf-8') as write_file:
+                        json.dump(data, write_file,ensure_ascii=False, indent=4)
                 return JsonResponse(response, status=200)
             else:
                 response['msg'], response['code'] = '账户或密码错误！', return_msg.S100

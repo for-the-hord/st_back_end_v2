@@ -11,7 +11,7 @@ import jwt
 
 
 from django.db import connection as conn
-from django.http import JsonResponse, HttpRequest,Http404
+from django.http import JsonResponse
 
 class MSG:
     S200 = 200  # 成功返回
@@ -50,8 +50,10 @@ class MSG:
     fail_delete = '删除数据失败！'
     exist_unit = '已存在重复的单位名称！'
     illegal_rc = '非法的模板文件！'
+    illegal_rd = '非法的数据文件！'
+    no_template = '找不到模板数据！'
 
-
+return_msg = MSG()
 def create_uuid():
     """
     创建一个uuid
@@ -60,8 +62,13 @@ def create_uuid():
     """
     return str(uuid.uuid1()).replace('-', '')
 
+class Calibration:
+    """
+    数据清洗校验规则，存放正则的表达式
+    """
+    d1 = r'^(\d{1,3}°\d{1,2}′\d{1,2}″$)' # DDD°MM′SS″
+    d2 = r'^-?\d{1,3}\.\d*$' # ddd.ddddddd
 
-return_msg = MSG()
 
 COMPONENT = {
     'input': {
@@ -257,7 +264,7 @@ COMPONENT = {
 
     'label': {
         "type": "text",
-        "label": "标签",
+        "label": "",
         "options": {
             "textAlign": "center",
             "tooptip": "",
@@ -267,8 +274,42 @@ COMPONENT = {
             "dynamicHideValue": "",
             "labelWidth": -1
         },
-        "key": "text_1685259188567"
-    }
+        "key": ""
+    },
+
+    'datePicker':	{
+			"type": "datePicker",
+			"label": "日期时间选择框",
+			"options": {
+				"width": "100%",
+				"defaultValue": "",
+				"rangeDefaultValue": [],
+				"range": False,
+				"disabled": False,
+				"hidden": False,
+				"clearable": False,
+				"placeholder": "请选择",
+				"tooptip": "",
+				"rangeStartPlaceholder": "开始时间",
+				"rangeEndPlaceholder": "结束时间",
+				"format": "yyyy-MM-dd HH:mm:ss",
+				"dynamicHide": False,
+				"dynamicHideValue": "",
+				"labelWidth": -1
+			},
+			"model": "",
+			"key": "",
+			"rules": [
+				{
+					"required": False,
+					"message": "必填项",
+					"trigger": [
+						"change",
+						"blur"
+					]
+				}
+			]
+		}
 }
 
 FERNET_KEY = '59XHlCAzuZZatGHt1feL82B8ZxOhclwdPsd4dW2r920='
@@ -334,7 +375,7 @@ def process_textarea(json, options):
     type = json['type']
     json['key'] = f'{type}_{str(uuid.uuid4().hex)}'
     json['model'] = f'{type}_{str(uuid.uuid4().hex)}'
-    json['options']['rows'] = options.get('rows', 9)
+    json['options']['rows'] = options.get('rows', 2)
 
 
 def process_radio(json, options):
@@ -353,6 +394,10 @@ def process_label(json, options):
     json['key'] = f'{type}_{str(uuid.uuid4().hex)}'
     json['label'] = options.get('default_value')
 
+def process_datepicker(json,options):
+    type = json['type']
+    json['key'] = f'{type}_{str(uuid.uuid4().hex)}'
+    json['defaultValue'] = options.get('default_value')
 
 def process_default(json, options):
     pass
@@ -365,7 +410,8 @@ type_handlers = {
     'number': process_number,
     'textarea': process_textarea,
     'radio': process_radio,
-    'label': process_label
+    'label': process_label,
+    'datePicker':process_datepicker
 }
 
 

@@ -141,7 +141,7 @@ class item(DetailView):
                       'rf.field_id,rf.field_value,rf.serial_no ' \
                       'from record r ' \
                       'left join record_fields rf on r.id = rf.record_id ' \
-                      'where r.id=%s'
+                      'where r.id=%s order by rf.serial_no'
                 params = [id]
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
@@ -164,6 +164,8 @@ class item(DetailView):
                 records = {}
                 data_box = []
                 for row in rows:
+                    if row['field_id'] == None:
+                        continue
                     if row['serial_no'] == -1:
                         records[row['field_id']] = row['field_value']
                     else:
@@ -281,8 +283,8 @@ class delete_view(DeleteView):
             return JsonResponse(response, status=500)
 
 
-# 导出模板文件，数据格式跟priview_template数据一致，
-# 加密生成rc文件
+# 导出数据文件，数据格式跟priview_template数据一致，
+# 加密生成rd文件
 @method_decorator(csrf_exempt, name='dispatch')
 class export_view(DetailView):
     def post(self, request, *args, **kwargs):
@@ -306,6 +308,7 @@ class export_view(DetailView):
                 # 构造返回数据
                 if len(rows) == 0:
                     response['code'], response['msg'] = return_msg.S100, return_msg.row_none
+                    return JsonResponse(response, status=200)
                 else:
                     data = {'id': rows[0].get('id'),
                             'name': rows[0].get('name'),
@@ -313,45 +316,35 @@ class export_view(DetailView):
                             'records': [],
                             'equipment_name': rows[0]['equipment_name'],
                             'unit_name': rows[0].get('unit_name'),
-                            'create_date': datetime.fromtimestamp(rows[0].get('create_date')).strftime(
-                                '%Y-%m-%d %H:%M:%S'),
-                            'update_date': datetime.fromtimestamp(rows[0].get('update_date')).strftime(
-                                '%Y-%m-%d %H:%M:%S')
+                            'create_date': rows[0].get('create_date'),
+                            'update_date': rows[0].get('update_date')
                             }
-                # 使用一个字典存储'serial_no'的值作为键，字典的值作为值，用来收集每一个'serial_no'对应的字段
-                records = {}
-                data_box = []
-                for row in rows:
-                    if row['serial_no'] == -1:
-                        records[row['field_id']] = row['field_value']
-                    else:
-                        if len(data_box) <= row['serial_no']:
-                            data_box.append({})
-                        data_box[row['serial_no']][row['field_id']] = row['field_value']
+                    # 使用一个字典存储'serial_no'的值作为键，字典的值作为值，用来收集每一个'serial_no'对应的字段
+                    for row in rows:
+                        if row['field_id'] == None:
+                            continue
+                        data['records'].append(
+                            {'field_id': row['field_id'], 'field_value': row['field_value'],
+                             'serial_no': row['serial_no']})
 
-                records["data_box"] = data_box
+                    cipher_suite = Fernet(FERNET_KEY)
+                    # 对数据进行加密
+                    json_str = json.dumps(data)
+                    cipher_text = cipher_suite.encrypt(json_str.encode())
 
-                data['records'] = records
+                    # 创建一个 BytesIO 对象并写入加密后的数据
+                    file = io.BytesIO()
+                    file.write(cipher_text)
+                    file.seek(0)
 
-                cipher_suite = Fernet(FERNET_KEY)
+                    # file_name = f'{data["name"]}.rc'
+                    # 创建一个 HttpResponse 对象，并设置 Content-Disposition 头，使其作为文件下载
 
-                # 对数据进行加密
-                json_str = json.dumps(data)
-                cipher_text = cipher_suite.encrypt(json_str.encode())
-
-                # 创建一个 BytesIO 对象并写入加密后的数据
-                file = io.BytesIO()
-                file.write(cipher_text)
-                file.seek(0)
-
-                # file_name = f'{data["name"]}.rc'
-                # 创建一个 HttpResponse 对象，并设置 Content-Disposition 头，使其作为文件下载
-
-                response = FileResponse(file)
-                response['Access-Control-Expose-Headers'] = '*'
-                response['Content-Type'] = 'application/octet-stream'
-                # response['Content-Disposition'] = f'attachment; filename*=UTF-8\'\'{quote(file_name)}'
-                return response
+                    response = FileResponse(file)
+                    response['Access-Control-Expose-Headers'] = '*'
+                    response['Content-Type'] = 'application/octet-stream'
+                    # response['Content-Disposition'] = f'attachment; filename*=UTF-8\'\'{quote(file_name)}'
+                    return response
         except Exception as e:
             response['code'], response['msg'] = return_msg.S100, return_msg.row_none
             return JsonResponse(response, status=500)
@@ -366,14 +359,43 @@ class import_view(DetailView):
             file = request.FILES.get('file')
             file_binary = file.read()
             # 解密数据
-            cipher_suite = Fernet(FERNET_KEY)
-            json_str = cipher_suite.decrypt(file_binary).decode()
             try:
-                response['data'] = json.loads(json_str)
+                cipher_suite = Fernet(FERNET_KEY)
+                json_str = cipher_suite.decrypt(file_binary).decode()
+                data = json.loads(json_str)  # data数据格式参照export数据
+                if len(data) == 0:
+                    response['code'], response['msg'] = return_msg.S100, return_msg.row_none
+                    return JsonResponse(response, status=400)
+                id = data.get('id')
+                if id == None:
+                    response['code'], response['msg'] = return_msg.S100, return_msg.illegal_rd
+                    return JsonResponse(response, status=200)
+            except Exception as e:
+                print(e)
+                response['code'], response['msg'] = return_msg.S100, return_msg.illegal_rd
+                return JsonResponse(response, status=200)
+            with conn.cursor() as cur:
+                # 覆盖已有的数据
+                sql = 'delete from record r where r.id=%s'
+                cur.execute(sql, [id])
+                sql = 'delete from record_fields rf where rf.record_id=%s'
+                cur.execute(sql,[id])
+                # 从文件中读取用户填报数据
+                # 写入到sql
+                sql = 'insert into record (id, template_id, name, unit_name, equipment_name, create_date, ' \
+                      'update_date) values (%s,%s,%s,%s,%s,%s,%s)'
+                params = [id, data.get('template_id'), data.get('name'),
+                          data.get('unit_name'),
+                          data.get('equipment_name'), data.get('create_date'), data.get('update_date')]
+                cur.execute(sql, params)
+                sql = 'insert into record_fields (record_id, field_id, field_value, serial_no) values (%s,%s,%s,%s)'
+                params = [[id, it['field_id'], it['field_value'], it['serial_no']] for it in data['records']]
+                cur.executemany(sql, params)
+                conn.commit()
                 return JsonResponse(response)
-            except:
-                response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
-                return JsonResponse(response, status=500)
         except Exception as e:
+            print(e)
+            conn.rollback()
             response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
             return JsonResponse(response, status=500)
+

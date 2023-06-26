@@ -11,6 +11,7 @@ from datetime import datetime
 import io
 from cryptography.fernet import Fernet
 from urllib.parse import quote
+import warnings
 
 from django.db import connection as conn
 from django.http import JsonResponse, HttpRequest, FileResponse
@@ -63,13 +64,13 @@ class list_view(ListView):
                     if limit_clause != '' else where_values
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
-            template_list = [
-                {'id': it.get('id'), 'name': it.get('template_name'),
-                 'is_file': it.get('is_fle'),
-                 'create_date': datetime.fromtimestamp(it.get('create_date')).strftime(
-                     '%Y-%m-%d %H:%M:%S'),
-                 'update_date': datetime.fromtimestamp(0 if (re := it.get('update_date')) is None else re).strftime(
-                     '%Y-%m-%d %H:%M:%S')} for it in rows]
+                template_list = [
+                    {'id': it.get('id'), 'name': it.get('template_name'),
+                     'is_file': it.get('is_fle'),
+                     'create_date': datetime.fromtimestamp(it.get('create_date')).strftime(
+                         '%Y-%m-%d %H:%M:%S'),
+                     'update_date': datetime.fromtimestamp(0 if (re := it.get('update_date')) is None else re).strftime(
+                         '%Y-%m-%d %H:%M:%S')} for it in rows]
 
             # 构造返回数据
             response['data'] = {'records': template_list, 'title': None,
@@ -120,10 +121,10 @@ class item(DetailView):
                         unit_name = row['unit_name']
                         equipment_name = row['equipment_name']
 
-                        if unit_name is not None:
+                        if unit_name is not None and unit_name not in data['unit_name']:
                             data['unit_name'].append(unit_name)
 
-                        if equipment_name is not None:
+                        if equipment_name is not None and equipment_name not in data['equipment_name']:
                             data['equipment_name'].append(equipment_name)
 
                     response['data'] = data
@@ -172,6 +173,7 @@ class list_by_unit_view(ListView):
 @method_decorator(csrf_exempt, name='dispatch')
 class create_view(CreateView):
     def post(self, request, *args, **kwargs):
+
         response = create_return_json()
         try:
             j = json.loads(request.body)
@@ -202,6 +204,7 @@ class create_view(CreateView):
             return JsonResponse(response, status=500)
 
 
+# 更新模板接口
 @method_decorator(csrf_exempt, name='dispatch')
 class update_view(UpdateView):
     def post(self, request, *args, **kwargs):
@@ -260,6 +263,9 @@ class preview_view(DetailView):
                 params = [id]
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
+                if len(rows) == 0:
+                    response['msg'], response['code'] = return_msg.no_template, return_msg.S100
+                    return JsonResponse(response, status=400)
                 data = {'id': rows[0]['id'], 'name': rows[0]['name'], 'equipment_name': []}
                 for row in rows:
                     data['equipment_name'].append(row['equipment_name'])
@@ -274,7 +280,7 @@ class preview_view(DetailView):
                 # 动态table的ngform格式
                 table = {
                     "type": "batch",
-                    "label": "动态表格",
+                    "label": "",
                     "list": [],
                     "options": {
                         "scrollY": 0,
