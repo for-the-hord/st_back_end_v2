@@ -7,18 +7,21 @@
 @description:
 """
 import json
+import os
 from datetime import datetime
 import io
 from cryptography.fernet import Fernet
 from urllib.parse import quote
-import warnings
+import pandas as pd
+from pypinyin import lazy_pinyin
 
 from django.db import connection as conn
-from django.http import JsonResponse, HttpRequest, FileResponse
+from django.http import JsonResponse, HttpRequest, FileResponse, HttpResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
 
+from .. import settings
 from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict, component_to_json, FERNET_KEY
 
 
@@ -184,7 +187,6 @@ class create_view(CreateView):
             # 从请求的 body 中获取 JSON 数据
             id = create_uuid()  # 模板id
             label = j.get('label')  # 模板名称
-            equipment_name = j.get('equipment_name')
             create_date = int(datetime.now().timestamp())
             is_file = j.get('is_file')
             with conn.cursor() as cur:
@@ -192,9 +194,6 @@ class create_view(CreateView):
                       'values(%s,%s,%s,%s,%s)'
                 params = [id, label, is_file, create_date, create_date]
                 cur.execute(sql, params)
-                params = [[id, it] for it in equipment_name]
-                sql = 'insert into tp_equipment (template_id,equipment_name) values (%s,%s)'
-                cur.executemany(sql, params)
                 conn.commit()
                 response['data'] = {'id': id}
             return JsonResponse(response)
@@ -499,6 +498,121 @@ class import_view(DetailView):
             except:
                 response['code'], response['msg'] = return_msg.S100, return_msg.illegal_rc
                 return JsonResponse(response, status=500)
+        except Exception as e:
+            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            return JsonResponse(response, status=500)
+
+# 下载模板采集要素
+@method_decorator(csrf_exempt, name='dispatch')
+class export_field_view(DetailView):
+    def get(self, request, *args, **kwargs):
+        response = create_return_json()
+        try:
+            type = request.GET.get('type')
+            if type=='info': # 下载要素模板
+                file_path = os.path.join(settings.FILE_ROOT, '要素模板.xlsx')
+                if os.path.exists(file_path):
+                    file_name = quote('要素模板.xlsx')
+                    # 直接在FileResponse内部打开文件
+                    response = FileResponse(open(file_path, 'rb'))
+                    response['content_type'] = "application/vnd.ms-excel"
+                    response['Content-Disposition'] = 'attachment;filename*=UTF-8\'\'{}'.format(file_name)
+                    return response
+            elif type == 'data': # 下载数据采集要素模板
+                file_path = os.path.join(settings.FILE_ROOT, '数据采集要素模板.xlsx')
+                if os.path.exists(file_path):
+                    file_name = quote('数据采集模板.xlsx')
+                    # 直接在FileResponse内部打开文件
+                    response = FileResponse(open(file_path, 'rb'))
+                    response['content_type'] = "application/vnd.ms-excel"
+                    response['Content-Disposition'] = 'attachment;filename*=UTF-8\'\'{}'.format(file_name)
+                    return response
+        except Exception as e:
+            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            return HttpResponse("error", status=500)
+
+# 导入模板采集要素
+@method_decorator(csrf_exempt, name='dispatch')
+class import_field_view(DetailView):
+    def post(self, request:HttpRequest, *args, **kwargs):
+        response = create_return_json()
+        try:
+            template_id = request.GET.get('template_id')
+            box = request.GET.get('box')
+            file = request.FILES.get('file')
+            if box =='data_box':
+                # 使用 header=None 选项读取 Excel 文件，这样 pandas 不会将第一行视为列名
+                df = pd.read_excel(file, header=None)
+                # 将 DataFrame 转换为转置形式，使每一列对应一个字段（'label', 'type', 'default'）
+                df = df.head(1)
+                df = df.transpose()
+
+                # 设置 DataFrame 的列名
+                df.columns = ['name']
+
+                # 添加一个新的列 'No'，用来表示每一列的序号
+                df['No'] = range(1, len(df) + 1)
+
+                # 添加一个新的列 'key'，用来表示 'label' 字段的英文名
+                def convert_to_english(label):
+                    """
+                    这里将lable转成一个唯一的key
+                    采用拼音+UUID
+                    Args:
+                        label:
+
+                    Returns:
+
+                    """
+                    pinyin_list = lazy_pinyin(label)
+                    name = ''.join(pinyin_list)
+                    name = f'{name}_{create_uuid()}'
+                    return name
+
+                df['key'] = df['name'].apply(convert_to_english)
+                # 将 DataFrame 转换为字典列表
+                data = df.to_dict('records')
+                response['data'] = data
+                return JsonResponse(response, status=200)
+            elif box == 'info_box':
+                # 使用 header=None 选项读取 Excel 文件，这样 pandas 不会将第一行视为列名
+                df = pd.read_excel(file, header=None)
+                # 将 DataFrame 转换为转置形式，使每一列对应一个字段（'label', 'type', 'default'）
+                df = df.head(3)
+                df = df.transpose()
+
+                # 设置 DataFrame 的列名
+                df.columns = ['name', 'component_type', 'default_value']
+
+                # 添加一个新的列 'No'，用来表示每一列的序号
+                df['No'] = range(1, len(df) + 1)
+
+                # 添加一个新的列 'key'，用来表示 'label' 字段的英文名
+                def convert_to_english(label):
+                    """
+                    这里将lable转成一个唯一的key
+                    采用拼音+UUID
+                    Args:
+                        label:
+
+                    Returns:
+
+                    """
+                    pinyin_list = lazy_pinyin(label)
+                    name = ''.join(pinyin_list)
+                    name = f'{name}_{create_uuid()}'
+                    return name
+
+                df['key'] = df['name'].apply(convert_to_english)
+                # 将 DataFrame 转换为字典列表
+                data = df.to_dict('records')
+                for it in data:
+                    it['template_id'] = template_id
+                    it['box'] = box
+                response['data'] = data
+                return JsonResponse(response, status=200)
+
+
         except Exception as e:
             response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
             return JsonResponse(response, status=500)

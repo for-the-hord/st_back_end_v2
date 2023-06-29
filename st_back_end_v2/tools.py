@@ -108,7 +108,7 @@ COMPONENT = {
         "label": "下拉选择器",
         "options": {
             "width": "100%",
-            "multiple": False,
+            "multiple": True,
             "disabled": False,
             "clearable": False,
             "hidden": False,

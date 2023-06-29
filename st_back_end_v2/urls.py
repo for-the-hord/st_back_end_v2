@@ -44,6 +44,8 @@ urlpatterns = [
     path('api/del_template', template_view.delete_view.as_view()),
     path('api/export_template', template_view.export_view.as_view()),
     path('api/import_template', template_view.import_view.as_view()),
+    path('api/import_field', template_view.import_field_view.as_view()),
+    path('api/export_field', template_view.export_field_view.as_view()),
 
     path('api/get_field_list', field_view.list_view.as_view()),
     path('api/add_field', field_view.create_view.as_view()),

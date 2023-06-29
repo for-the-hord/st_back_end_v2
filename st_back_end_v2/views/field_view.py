@@ -15,10 +15,7 @@ from django.http import JsonResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import ListView, CreateView, DeleteView
-
-from ..tools import  return_msg, create_return_json, rows_as_dict, component_to_json
-
-
+from ..tools import return_msg, create_return_json, rows_as_dict, component_to_json
 
 
 # 获取模板字段列表
@@ -30,7 +27,7 @@ class list_view(ListView):
             j = json.loads(request.body)
         except:
             response['msg'], response['code'] = 'bad request！', return_msg.S400
-            return JsonResponse(response,status=400)
+            return JsonResponse(response, status=400)
         try:
             # 从请求的 body 中获取 JSON 数据
             id = j.get('id')  # 模板id
@@ -61,7 +58,7 @@ class create_view(CreateView):
             j = json.loads(request.body)
         except:
             response['msg'], response['code'] = 'bad request！', return_msg.S400
-            return JsonResponse(response,status=400)
+            return JsonResponse(response, status=400)
         try:
             # 从请求的 body 中获取 JSON 数据
             id = j.get('template_id')  # 模板id
@@ -69,8 +66,9 @@ class create_view(CreateView):
             label = j.get('name')  # 字段组件标签
             component_type = j.get('component_type')  # 字段类型
             options = j.get('options')  # 字段选项
-            component = component_to_json(type=component_type, options=options,label = label)  # 字段组件json
-            params=[id, component['key'], in_box, json.dumps(component), label, component_type]
+            default_value = options.get('default_value',None)
+            component = component_to_json(type=component_type, options=options, label=label)  # 字段组件json
+            params = [id, component['key'], in_box, json.dumps(component), label, component_type]
 
             # 执行原生 SQL 查询
             with conn.cursor() as cur:
@@ -78,13 +76,15 @@ class create_view(CreateView):
                       'values (%s,%s,%s,%s,%s,%s)'
                 cur.execute(sql, params)
                 conn.commit()
-                response['data'] = {'template_id':id,'field_id':component['key'],'name':label,'component_type':component_type,'box':in_box}
+                response['data'] = {'template_id': id, 'field_id': component['key'], 'name': label,
+                                    'component_type': component_type, 'box': in_box,'default_value':default_value}
             return JsonResponse(response, status=200)
 
         except Exception as e:
             conn.rollback()
             response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
             return JsonResponse(response, status=500)
+
 
 # 删除字段接口
 @method_decorator(csrf_exempt, name='dispatch')
@@ -95,7 +95,7 @@ class delete_view(DeleteView):
             j = json.loads(request.body)
         except:
             response['msg'], response['code'] = 'bad request！', return_msg.S400
-            return JsonResponse(response,status=400)
+            return JsonResponse(response, status=400)
         try:
             # 从请求的 body 中获取 JSON 数据
             tempalate_id = j.get('template_id')
@@ -103,11 +103,11 @@ class delete_view(DeleteView):
 
             with conn.cursor() as cur:
                 sql = 'delete from template_fields where template_id=%s and field_id = %s'
-                params = [tempalate_id,field_id]
+                params = [tempalate_id, field_id]
                 cur.execute(sql, params)
                 conn.commit()
-            return JsonResponse(response,status=200)
+            return JsonResponse(response, status=200)
         except Exception as e:
             conn.rollback()
             response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
-            return JsonResponse(response,status=500)
+            return JsonResponse(response, status=500)
