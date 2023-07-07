@@ -33,7 +33,7 @@ urlpatterns = [
     path('api/update_user',user_view.update_view.as_view()),
     path('api/del_user',user_view.delete_view.as_view()),
     path('api/reset',user_view.reset_view.as_view()),
-    path('api/upload', view.upload_file_view.as_view()),
+
     # 模板管理
     path('api/get_template_list', template_view.list_view.as_view()),
     path('api/get_template',template_view.item.as_view()),
@@ -60,7 +60,13 @@ urlpatterns = [
     path('api/get_template_by_unit',template_view.list_by_unit_view.as_view()),
     path('api/export_record', record_view.export_view.as_view()),
     path('api/import_record', record_view.import_view.as_view()),
-
+    path('api/search_template', record_view.template_search.as_view()),
+    path('api/search_equipment', record_view.equipment_search.as_view()),
+    path('api/search_unit', record_view.unit_search.as_view()),
+    path('api/upload', view.upload_file_view.as_view()),
+    path('api/download',view.download_file_view.as_view()),
+    path('api/import_record_field', record_view.import_field_view.as_view()),
+    path('api/export_record_field', record_view.export_field_view.as_view()),
     #单位管理
     path('api/get_unit_list', unit_view.list_view.as_view()),
     # path('api/get_unit', unit_view.item.as_view()),

@@ -6,6 +6,7 @@
 @time: 2023/4/3 8:42
 @description: 
 """
+import os
 import uuid
 import jwt
 
@@ -16,6 +17,7 @@ from django.http import JsonResponse
 class MSG:
     S200 = 200  # 成功返回
     S100 = 100  # 失败返回
+    S101 = 101
     S401 = 401  # 验证失败
     S400 = 400 #
     bad_request='bad request！'
@@ -52,6 +54,7 @@ class MSG:
     illegal_rc = '非法的模板文件！'
     illegal_rd = '非法的数据文件！'
     no_template = '找不到模板数据！'
+    data_error = '数据格式错误！'
 
 return_msg = MSG()
 def create_uuid():
@@ -66,9 +69,21 @@ class Calibration:
     """
     数据清洗校验规则，存放正则的表达式
     """
-    d1 = r'^(\d{1,3}°\d{1,2}′\d{1,2}″$)' # DDD°MM′SS″
-    d2 = r'^-?\d{1,3}\.\d*$' # ddd.ddddddd
+    # 经纬度正则规则
+    _lonlat = [
+    r'^(\d{1,3}°\d{1,2}′\d{1,2}″$)', # DDD°MM′SS″
+    r'^-?\d{1,3}\.\d*$' # ddd.ddddddd
+    ]
 
+    # 时间正则规则
+    _date = []
+
+    _di = {'lonlat':_lonlat,'date':_date}
+
+    def get(self,type):
+        return self._di.get(type,[])
+
+calibration = Calibration()
 
 COMPONENT = {
     'input': {
@@ -309,7 +324,71 @@ COMPONENT = {
 					]
 				}
 			]
-		}
+		},
+
+    'date': {
+        "type": "input",
+        "label": "输入框",
+        "options": {
+            "type": "text",
+            "width": "100%",
+            "defaultValue": "",
+            "placeholder": "请输入时间",
+            "clearable": False,
+            "maxLength": 0,
+            "prepend": "",
+            "append": "",
+            "tooptip": "",
+            "hidden": False,
+            "disabled": False,
+            "dynamicHide": False,
+            "dynamicHideValue": "",
+            "labelWidth": -1
+        },
+        "model": "input_1685102799060",
+        "key": "input_1685102799060",
+        "rules": [
+            {
+                "required": False,
+                "message": "必填项",
+                "trigger": [
+                    "blur"
+                ]
+            }
+        ]
+    },
+
+    'lonlat': {
+        "type": "input",
+        "label": "输入框",
+        "options": {
+            "type": "text",
+            "width": "100%",
+            "defaultValue": "",
+            "placeholder": "请输入经纬度",
+            "clearable": False,
+            "maxLength": 0,
+            "prepend": "",
+            "append": "",
+            "tooptip": "",
+            "hidden": False,
+            "disabled": False,
+            "dynamicHide": False,
+            "dynamicHideValue": "",
+            "labelWidth": -1
+        },
+        "model": "input_1685102799060",
+        "key": "input_1685102799060",
+        "rules": [
+            {
+                "required": False,
+                "message": "必填项",
+                "trigger": [
+                    "blur"
+                ]
+            }
+        ]
+    },
 }
 
 FERNET_KEY = '59XHlCAzuZZatGHt1feL82B8ZxOhclwdPsd4dW2r920='
@@ -342,62 +421,69 @@ def rows_as_dict(cursor):
     return [dict(zip(col_names, row)) for row in cursor]
 
 
-def process_input(json, options):
+def process_input(json, default):
     type = json['type']
     json['key'] = f'{type}_{str(uuid.uuid4().hex)}'
     json['model'] = f'{type}_{str(uuid.uuid4().hex)}'
-    json['options']['defaultValue'] = options.get('default_value', None)
-    json['options']['maxLength'] = options.get('max_length', None)
+    json['options']['defaultValue'] = default
 
 
-def process_select(json, options):
+def process_select(json, default):
     type = json['type']
     json['key'] = f'{type}_{str(uuid.uuid4().hex)}'
     json['model'] = f'{type}_{str(uuid.uuid4().hex)}'
     json['options']['valueKey'] = 'value'
     # select 组件 default为数组
-    li = [{'value': it, 'label': it} for it in options.get('list')]
+    if default is not None:
+        re_default = default.replace('；', ';')
+        # 使用 split() 函数将字符串按英文逗号分割
+        options = re_default.split(';')
+        li = [{'value': it, 'label': it} for it in options]
+    else:
+        li=[]
     json['options']['options'] = li
-    json['defaultValue'] = options.get('default_value')
 
 
-def process_number(json, options):
+def process_number(json, default):
     type = json['type']
     json['key'] = f'{type}_{str(uuid.uuid4().hex)}'
     json['model'] = f'{type}_{str(uuid.uuid4().hex)}'
-    json['options']['defaultValue'] = options.get('default_value', None)
-    json['options']['min'] = options.get('min', None)
-    json['options']['max'] = options.get('max', None)
-    json['options']['precision'] = options.get('precision')
+    json['options']['defaultValue'] = default
 
 
-def process_textarea(json, options):
+def process_textarea(json, default):
     type = json['type']
     json['key'] = f'{type}_{str(uuid.uuid4().hex)}'
     json['model'] = f'{type}_{str(uuid.uuid4().hex)}'
-    json['options']['rows'] = options.get('rows', 2)
+    json['options']['rows'] = 8
 
 
-def process_radio(json, options):
+def process_radio(json, default):
     type = json['type']
     json['key'] = f'{type}_{str(uuid.uuid4().hex)}'
     json['model'] = f'{type}_{str(uuid.uuid4().hex)}'
     json['options']['valueKey'] = 'value'
-    json['defaultValue'] = options.get('default_value')
+    json['defaultValue'] = default
     # radio 组件 default为数组
-    li = [{'value': it, 'label': it} for it in options.get('list')]
+    if default is not None:
+        re_default = default.replace('；', ';')
+        # 使用 split() 函数将字符串按英文逗号分割
+        options = re_default.split(';')
+        li = [{'value': it, 'label': it} for it in options]
+    else:
+        li=[]
     json['options']['options'] = li
 
 
-def process_label(json, options):
+def process_label(json, default):
     type = json['type']
     json['key'] = f'{type}_{str(uuid.uuid4().hex)}'
-    json['label'] = options.get('default_value')
+    json['label'] = default
 
-def process_datepicker(json,options):
+def process_datepicker(json,default):
     type = json['type']
     json['key'] = f'{type}_{str(uuid.uuid4().hex)}'
-    json['defaultValue'] = options.get('default_value')
+    json['defaultValue'] = default
 
 def process_default(json, options):
     pass
@@ -411,7 +497,9 @@ type_handlers = {
     'textarea': process_textarea,
     'radio': process_radio,
     'label': process_label,
-    'datePicker':process_datepicker
+    'datePicker':process_datepicker,
+    'date':process_input,
+    'lonlat':process_input,
 }
 
 
@@ -426,8 +514,8 @@ def component_to_json(**kwargs):
     json['label'] = kwargs.get('label')
     if json is not None:
         handler = type_handlers.get(type, process_default)
-        options = kwargs.get('options')
-        handler(json, options)
+        default = kwargs.get('default')
+        handler(json, default)
     return json
 
 def list_to_tree(data, **kwargs):
@@ -567,3 +655,12 @@ def check_token(view_func):
             return JsonResponse(response, status=401)
 
     return wrapped
+
+def rename_file_with_uuid(original_file_name):
+
+    uuid_str = str(uuid.uuid4())
+    # 使用os.path.splitext函数获取文件的扩展名
+    _, file_extension = os.path.splitext(original_file_name)
+
+    new_file_name = uuid_str + file_extension
+    return new_file_name,uuid_str
