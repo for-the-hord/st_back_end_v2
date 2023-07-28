@@ -6,21 +6,27 @@
 @time: 2023/4/3 8:42
 @description: 
 """
-import os
+import re
 import uuid
 import jwt
+import os
+from datetime import datetime
+import zipfile
+import zipstream
 
-
+from django.conf import settings
+from datetime import datetime
 from django.db import connection as conn
 from django.http import JsonResponse
 
+
 class MSG:
-    S200 = 200  # 成功返回
-    S100 = 100  # 失败返回
-    S101 = 101
-    S401 = 401  # 验证失败
-    S400 = 400 #
-    bad_request='bad request！'
+    code_200 = 200  # 成功返回
+    code_100 = 100  # 失败返回
+    code_101 = 101
+    code_401 = 401  # 验证失败
+    code_400 = 400  #
+    bad_request = 'bad request！'
     succ = '操作成功'
     inner_error = '内部错误，请联系管理员！'
     params_error = '参数错误！'
@@ -40,7 +46,7 @@ class MSG:
     exist_doing = '有未完成转学申请，请勿重复申请'
     exist_score = '已存在该同学的成绩！'
     exist_records = '已存在该同学当前方案的选课记录！'
-    no_access = '无权限修改他人的考试方案'
+    no_access = '无权导入其他单位模板'
     password_error = '输入密码错误！'
     not_in_time = '未到选课时间'
     upload_error = '导入失败！'
@@ -56,7 +62,7 @@ class MSG:
     no_template = '找不到模板数据！'
     data_error = '数据格式错误！'
 
-return_msg = MSG()
+
 def create_uuid():
     """
     创建一个uuid
@@ -65,23 +71,215 @@ def create_uuid():
     """
     return str(uuid.uuid1()).replace('-', '')
 
+
+return_msg = MSG()
+
+
 class Calibration:
     """
     数据清洗校验规则，存放正则的表达式
     """
     # 经纬度正则规则
     _lonlat = [
-    r'^(\d{1,3}°\d{1,2}′\d{1,2}″$)', # DDD°MM′SS″
-    r'^-?\d{1,3}\.\d*$' # ddd.ddddddd
+        r'([NS])(\d{2})(\d{2})(\d{2})$',# Nddmmss
+        r'([WE])(\d{3})(\d{2})(\d{2})$',# Edddmmss
+        r'^-?\d{1,3}\.\d*$',# ddd.ddddddd
+        r'^(-?)(\d{2})(\d{2})(\d{2}$)',# ddmmss
+        r'^(-?)(\d{3})(\d{2})(\d{2}$)',# dddmmss
+        r'([WE])(\d{1,3})°(\d{1,2})′(\d{1,2})″$',# Eddd°mm′ss″
+        r'([NS])(\d{1,2})°(\d{1,2})′(\d{1,2})″$',  # Nddd°mm′ss″
+        r'^(-?)(\d{1,3})°(\d{1,2})′(\d{1,2})″$',  # ddd°mm′ss″
+        r'(\d{1,3})°(\d{1,2})′(\d{1,2})″([WE])$',  # ddd°mm′ss″E
+        r'(\d{1,2})°(\d{1,2})′(\d{1,2})″([NS])$',  # ddd°mm′ss″E
     ]
 
     # 时间正则规则
-    _date = []
+    _date = [
+        r'^(\d{1,2}):(\d{1,2}):(\d{1,2})$',  # '%H:%M:%S',0
+        r'^(\d{2})(\d{2})$',  # '%H%M',1
+        r'^(\d{1,2}):(\d{1,2})$',  # '%H:%M',2
+        r'^T(\d{2})(\d{2})(\d{2})$',  # 'T%H%M%S',3
+        r'^(\d{2})(\d{2})(\d{2})$',  # '%H%M%S',4
+        r'^(\d{1,2})时(\d{1,2})分(\d{1,2})秒$',  # '%H时%M分%S秒',5
+        r'^(\d{1,2})时(\d{1,2})分$',  # '%H时%M分',6
+        r'^(\d{2})(\d{2})H$',  # '%H%MH',7
+        r'^(\d{1,2})时$',  # '%H时',8
 
-    _di = {'lonlat':_lonlat,'date':_date}
+        r'^(\d{4})-(\d{1,2})-(\d{1,2}) (\d{1,2}):(\d{1,2})$',  # '%Y-%m-%d %H:%M',10
+        r'^(\d{4})-(\d{1,2})-(\d{1,2}) (\d{1,2}):(\d{1,2}):(\d{1,2})$',  # '%Y-%m-%d %H:%M:%S',11
+        r'^(\d{4})/(\d{1,2})/(\d{1,2}) (\d{1,2}):(\d{1,2})$',  # '%Y/%m/%d %H:%M',12
+        r'^(\d{4})/(\d{1,2})/(\d{1,2}) (\d{1,2}):(\d{1,2}):(\d{1,2})$',# '%Y/%m/%d %H:%M:%S',12
+        r'^(\d{4}).(\d{1,2}).(\d{1,2})/(\d{1,2}):(\d{1,2})$',  # '%Y.%m.%d/%H:%M',13
+        r'^(\d{4}).(\d{1,2}).(\d{1,2})/(\d{1,2}):(\d{1,2}):(\d{1,2})$',  # '%Y.%m.%d/%H:%M:%S',14
+        r'^(\d{4}).(\d{1,2}).(\d{1,2}) (\d{1,2}):(\d{1,2})$',  # '%Y.%m.%d %H:%M',15
+        r'^(\d{4}).(\d{1,2}).(\d{1,2}) (\d{1,2}):(\d{1,2}):(\d{1,2})$',  # '%Y.%m.%d %H:%M:%S',16
+        r'^(\d{1,2})月(\d{1,2})日(\d{1,2})时(\d{1,2})分$',  # '%m月%d日%H时%M分',17
+        r'^(\d{1,2})月(\d{1,2})日(\d{1,2})时(\d{1,2})分(\d{1,2})秒$'  # '%m月%d日%H时%M分%S秒',18
+    ]
 
-    def get(self,type):
-        return self._di.get(type,[])
+    _di = {'lonlat': _lonlat, 'date': _date}
+
+    _re_lonlat = {
+
+    }
+    _re_date_with = {
+        r'^(\d{1,2}):(\d{1,2}):(\d{1,2})$': '%H:%M:%S',
+        r'^(\d{2})(\d{2})$': '%H%M',
+        r'^(\d{1,2}):(\d{1,2})$': '%H:%M',
+        r'^T(\d{2})(\d{2})(\d{2})$': 'T%H%M%S',
+        r'^(\d{2})(\d{2})(\d{2})$': '%H%M%S',
+        r'^(\d{1,2})时(\d{1,2})分(\d{1,2})秒$': '%H时%M分%S秒',
+        r'^(\d{1,2})时(\d{1,2})分$': '%H时%M分',
+        r'^(\d{2})(\d{2})H$': '%H%MH',
+        r'^(\d{1,2})时$': '%H时',
+    }
+    _re_date = {
+        r'^(\d{4})-(\d{1,2})-(\d{1,2}) (\d{1,2}):(\d{1,2})$': '%Y-%m-%d %H:%M',
+        r'^(\d{4})-(\d{1,2})-(\d{1,2}) (\d{1,2}):(\d{1,2}):(\d{1,2})$': '%Y-%m-%d %H:%M:%S',
+        r'^(\d{4})/(\d{1,2})/(\d{1,2}) (\d{1,2}):(\d{1,2})$': '%Y/%m/%d %H:%M',
+        r'^(\d{4})/(\d{1,2})/(\d{1,2}) (\d{1,2}):(\d{1,2}):(\d{1,2})$':'%Y/%m/%d %H:%M:%S',
+        r'^(\d{4}).(\d{1,2}).(\d{1,2})/(\d{1,2}):(\d{1,2})$': '%Y.%m.%d/%H:%M',
+        r'^(\d{4}).(\d{1,2}).(\d{1,2})/(\d{1,2}):(\d{1,2}):(\d{1,2})$': '%Y.%m.%d/%H:%M:%S',
+        r'^(\d{4}).(\d{1,2}).(\d{1,2}) (\d{1,2}):(\d{1,2})$': '%Y.%m.%d %H:%M',
+        r'^(\d{4}).(\d{1,2}).(\d{1,2}) (\d{1,2}):(\d{1,2}):(\d{1,2})$': '%Y.%m.%d %H:%M:%S',
+        r'^(\d{1,2})月(\d{1,2})日(\d{1,2})时(\d{1,2})分$': '%m月%d日%H时%M分',
+        r'^(\d{1,2})月(\d{1,2})日(\d{1,2})时(\d{1,2})分(\d{1,2})秒$': '%m月%d日%H时%M分%S秒'
+    }
+
+    def get(self, type):
+        return self._di.get(type, [])
+
+    def transfer_date(self, date_time, re):
+        """
+        时间数据格式标准化
+        :param date_time:
+        :param re:
+        :return:
+        """
+        if re in self._re_date_with:
+            """ 需要补充年月日"""
+            date = datetime.now().strftime('%Y-%m-%d ')
+            value = f'{date} {date_time}'
+            date_format = self._re_date_with.get(re)
+            date_format = f'%Y-%m-%d {date_format}'
+        elif re in self._re_date:
+            """ 需要补充年月日"""
+            date_format = self._re_date.get(re)
+            value = date_time
+        else:
+            value = date_time
+            date_format = '%Y-%m-%d %H:%M:%S'
+        return value, date_format
+
+    def transfer_lonlat(self, lonlat, rex):
+        """
+        经纬度数据格式小数点标准化
+        :param lonlat:
+        :param re:
+        :return:
+        """
+        value = 0
+        if rex == r'([NS])(\d{2})(\d{2})(\d{2})$':
+            # Nddmmss
+            match = re.match( rex, lonlat)
+            azimuth = match.group(1)
+            degrees = int(match.group(2))
+            minutes = int(match.group(3))
+            seconds = int(match.group(4))
+            value = degrees + minutes / 60 + seconds / 3600
+            # 如果是西经或南纬，则结果为负
+            if azimuth in 'WS':
+                value = -value
+
+        elif rex == r'([WE])(\d{3})(\d{2})(\d{2})$':
+            match = re.match( rex, lonlat)
+            azimuth = match.group(1)
+            degrees = int(match.group(2))
+            minutes = int(match.group(3))
+            seconds = int(match.group(4))
+            value = degrees + minutes / 60 + seconds / 3600
+            if azimuth in 'WS':
+                value = -value
+        elif rex  == r'^-?\d{1,3}\.\d*$':
+            # ddd.ddddddd
+            value=lonlat
+        elif rex  == r'^(-?)(\d{2})(\d{2})(\d{2}$)':
+            # ddmmss
+            match = re.match(rex, lonlat)
+            negative = match.group(1)
+            degrees = int(match.group(2))
+            minutes = int(match.group(3))
+            seconds = int(match.group(4))
+            value = degrees + minutes / 60 + seconds / 3600
+            if negative == '-':
+                value = - value
+        elif rex  == r'^(-?)(\d{3})(\d{2})(\d{2}$)':
+            # dddmmss
+            match = re.match(rex, lonlat)
+            negative = match.group(1)
+            degrees = int(match.group(2))
+            minutes = int(match.group(3))
+            seconds = int(match.group(4))
+            value = degrees + minutes / 60 + seconds / 3600
+            if negative == '-':
+                value = - value
+
+
+        elif rex == r'([NS])(\d{1,2})°(\d{1,2})′(\d{1,2})″$':
+            # Eddd°mm′ss″
+            match = re.match(rex, lonlat)
+            azimuth = match.group(1)
+            degrees = int(match.group(2))
+            minutes = int(match.group(3))
+            seconds = int(match.group(4))
+            value = degrees + minutes / 60 + seconds / 3600
+            if azimuth in 'WS':
+                value = - value
+        elif rex == r'([EW])(\d{1,3})°(\d{1,2})′(\d{1,2})″$':
+            # Eddd°mm′ss″
+            match = re.match(rex, lonlat)
+            azimuth = match.group(1)
+            degrees = int(match.group(2))
+            minutes = int(match.group(3))
+            seconds = int(match.group(4))
+            value = degrees + minutes / 60 + seconds / 3600
+            if azimuth in 'WS':
+                value = - value
+        elif rex  == r'^(-?)(\d{1,3})°(\d{1,2})′(\d{1,2})″$' :
+            # ddd°mm′ss″
+            match = re.match(rex, lonlat)
+            negative = match.group(1)
+            degrees = int(match.group(2))
+            minutes = int(match.group(3))
+            seconds = int(match.group(4))
+            value = degrees + minutes / 60 + seconds / 3600
+            if negative =='-':
+                value = - value
+
+        elif rex  == r'(\d{1,3})°(\d{1,2})′(\d{1,2})″([WE])$':
+            # ddd°mm′ss″N
+            match = re.match(rex, lonlat)
+            degrees = int(match.group(1))
+            minutes = int(match.group(2))
+            seconds = int(match.group(3))
+            azimuth = match.group(4)
+            value = degrees + minutes / 60 + seconds / 3600
+            if azimuth == 'WS':
+                value = - value
+        elif rex  == r'(\d{1,2})°(\d{1,2})′(\d{1,2})″([NS])$':
+            # ddd°mm′ss″N
+            match = re.match(rex, lonlat)
+            degrees = int(match.group(1))
+            minutes = int(match.group(2))
+            seconds = int(match.group(3))
+            azimuth = match.group(4)
+            value = degrees + minutes / 60 + seconds / 3600
+            if azimuth == 'WS':
+                value = - value
+        else:
+            value = value
+        return value, lonlat
+
 
 calibration = Calibration()
 
@@ -292,39 +490,39 @@ COMPONENT = {
         "key": ""
     },
 
-    'datePicker':	{
-			"type": "datePicker",
-			"label": "日期时间选择框",
-			"options": {
-				"width": "100%",
-				"defaultValue": "",
-				"rangeDefaultValue": [],
-				"range": False,
-				"disabled": False,
-				"hidden": False,
-				"clearable": False,
-				"placeholder": "请选择",
-				"tooptip": "",
-				"rangeStartPlaceholder": "开始时间",
-				"rangeEndPlaceholder": "结束时间",
-				"format": "yyyy-MM-dd HH:mm:ss",
-				"dynamicHide": False,
-				"dynamicHideValue": "",
-				"labelWidth": -1
-			},
-			"model": "",
-			"key": "",
-			"rules": [
-				{
-					"required": False,
-					"message": "必填项",
-					"trigger": [
-						"change",
-						"blur"
-					]
-				}
-			]
-		},
+    'datePicker': {
+        "type": "datePicker",
+        "label": "日期时间选择框",
+        "options": {
+            "width": "100%",
+            "defaultValue": "",
+            "rangeDefaultValue": [],
+            "range": False,
+            "disabled": False,
+            "hidden": False,
+            "clearable": False,
+            "placeholder": "请选择",
+            "tooptip": "",
+            "rangeStartPlaceholder": "开始时间",
+            "rangeEndPlaceholder": "结束时间",
+            "format": "yyyy-MM-dd HH:mm:ss",
+            "dynamicHide": False,
+            "dynamicHideValue": "",
+            "labelWidth": -1
+        },
+        "model": "",
+        "key": "",
+        "rules": [
+            {
+                "required": False,
+                "message": "必填项",
+                "trigger": [
+                    "change",
+                    "blur"
+                ]
+            }
+        ]
+    },
 
     'date': {
         "type": "input",
@@ -394,7 +592,7 @@ COMPONENT = {
 FERNET_KEY = '59XHlCAzuZZatGHt1feL82B8ZxOhclwdPsd4dW2r920='
 
 
-def create_return_json():
+def create_response():
     """
     创建一个返回json
     Returns:
@@ -402,7 +600,7 @@ def create_return_json():
     """
     # return json
     return {
-        'code': return_msg.S200,
+        'code': return_msg.code_200,
         'msg': return_msg.succ,
         'data': None
     }
@@ -440,7 +638,7 @@ def process_select(json, default):
         options = re_default.split(';')
         li = [{'value': it, 'label': it} for it in options]
     else:
-        li=[]
+        li = []
     json['options']['options'] = li
 
 
@@ -497,9 +695,9 @@ type_handlers = {
     'textarea': process_textarea,
     'radio': process_radio,
     'label': process_label,
-    'datePicker':process_datepicker,
-    'date':process_input,
-    'lonlat':process_input,
+    'datePicker': process_datepicker,
+    'date': process_input,
+    'lonlat': process_input,
 }
 
 
@@ -517,6 +715,7 @@ def component_to_json(**kwargs):
         default = kwargs.get('default')
         handler(json, default)
     return json
+
 
 def list_to_tree(data, **kwargs):
     """
@@ -580,6 +779,7 @@ def list_to_tree(data, **kwargs):
 
     return root
 
+
 def add_node(p, node, **kwargs):
     # 子节点list
     # args = args['args']
@@ -614,7 +814,7 @@ def find_parent(root, node):
 def check_token(view_func):
     def wrapped(request, *args, **kwargs):
         # 获取前端传过来的token
-        response = create_return_json()
+        response = create_response()
         token = request.headers.get('AUTHORIZATION', '').split(' ')
         if len(token) > 1:
             token = token[1]
@@ -641,26 +841,51 @@ def check_token(view_func):
 
         except jwt.ExpiredSignatureError:
             # token过期
-            response['code'], response['msg'] = return_msg.S401, return_msg.token_expired
+            response['code'], response['msg'] = return_msg.code_401, return_msg.token_expired
             return JsonResponse(response, status=401)
 
         except jwt.InvalidSignatureError:
             # token无效
-            response['code'], response['msg'] = return_msg.S401, return_msg.token_invalid
+            response['code'], response['msg'] = return_msg.code_401, return_msg.token_invalid
             return JsonResponse(response, status=401)
 
-        except :
+        except:
             # 用户不存在
-            response['code'], response['msg'] = return_msg.S401, return_msg.no_user
+            response['code'], response['msg'] = return_msg.code_401, return_msg.no_user
             return JsonResponse(response, status=401)
 
     return wrapped
 
-def rename_file_with_uuid(original_file_name):
 
-    uuid_str = str(uuid.uuid4())
+def rename_file_with_uuid(original_file_name):
+    uuid_str = create_uuid()
     # 使用os.path.splitext函数获取文件的扩展名
     _, file_extension = os.path.splitext(original_file_name)
 
     new_file_name = uuid_str + file_extension
-    return new_file_name,uuid_str
+    return new_file_name, uuid_str
+
+
+class ZipUtils:
+    zip_file = None
+
+    def __init__(self):
+        self.zip_file = zipstream.ZipFile(mode='w', compression=zipstream.ZIP_DEFLATED)
+
+    def to_zip(self, file, name):
+        if os.path.isfile(file):
+            self.zip_file.write(file, arcname=os.path.basename(file))
+        else:
+            self.add_folder_to_zip(file, name)
+
+    def add_folder_to_zip(self, folder, name):
+        for file in os.listdir(folder):
+            full_path = os.path.join(folder, file)
+            if os.path.isfile(full_path):
+                self.zip_file.write(full_path, arcname=os.path.join(name, os.path.basename(full_path)))
+            elif os.path.isdir(full_path):
+                self.add_folder_to_zip(full_path, arcname=os.path.join(name, os.path.basename(full_path)))
+
+    def close(self):
+        if self.zip_file:
+            self.zip_file.close()
