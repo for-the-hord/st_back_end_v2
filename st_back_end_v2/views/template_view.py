@@ -21,9 +21,8 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
 
-from .. import settings
 from ..settings import TEMPLATE_ROOT
-from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict, component_to_json, FERNET_KEY
+from st_back_end_v2.utils.utils import create_uuid, return_msg, create_response, rows_as_dict, FERNET_KEY
 
 
 # 获取模板列表
@@ -31,11 +30,11 @@ from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict, c
 # @method_decorator(check_token, name='dispatch')
 class list_view(ListView):
     def post(self, request: HttpRequest, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
             return JsonResponse(response, status=400)
         try:
             page_size = j.get('page_size')
@@ -90,11 +89,11 @@ class list_view(ListView):
 class item(DetailView):
 
     def post(self, request, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = return_msg.bad_request, return_msg.S400
+            response['msg'], response['code'] = return_msg.bad_request, return_msg.code_400
             return JsonResponse(response, status=400)
         try:
             id = j.get('id')
@@ -108,7 +107,7 @@ class item(DetailView):
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
                 if len(rows) == 0:
-                    response['msg'], response['code'] = return_msg.no_template, return_msg.S100
+                    response['msg'], response['code'] = return_msg.no_template, return_msg.code_100
                     return JsonResponse(response, status=400)
                 equipment = []
                 data = {'id': rows[0]['id'], 'name': rows[0]['name'],
@@ -140,7 +139,7 @@ class item(DetailView):
                 return JsonResponse(response)
         except Exception as e:
             print(e)
-            response['code'], response['msg'] = return_msg.S100, return_msg.row_none
+            response['code'], response['msg'] = return_msg.code_100, return_msg.row_none
             return JsonResponse(response, status=500)
 
 
@@ -149,11 +148,11 @@ class item(DetailView):
 # @method_decorator(check_token, name='dispatch')
 class list_by_unit_view(ListView):
     def post(self, request: HttpRequest, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = return_msg.bad_request, return_msg.S400
+            response['msg'], response['code'] = return_msg.bad_request, return_msg.code_400
             return JsonResponse(response, status=400)
         try:
             with conn.cursor() as cur:
@@ -175,7 +174,7 @@ class list_by_unit_view(ListView):
             return JsonResponse(response)
         except Exception as e:
             print(e)
-            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            response['code'], response['msg'] = return_msg.code_100, return_msg.inner_error
             return JsonResponse(response)
 
 
@@ -183,11 +182,11 @@ class list_by_unit_view(ListView):
 @method_decorator(csrf_exempt, name='dispatch')
 class create_view(CreateView):
     def post(self, request, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = return_msg.bad_request, return_msg.S400
+            response['msg'], response['code'] = return_msg.bad_request, return_msg.code_400
             return JsonResponse(response, status=400)
         try:
             # 从请求的 body 中获取 JSON 数据
@@ -226,7 +225,7 @@ class create_view(CreateView):
             return JsonResponse(response)
         except Exception as e:
             conn.rollback()
-            response['code'], response['msg'] = return_msg.S100, return_msg.fail_insert
+            response['code'], response['msg'] = return_msg.code_100, return_msg.fail_insert
             return JsonResponse(response, status=500)
 
 
@@ -234,11 +233,11 @@ class create_view(CreateView):
 @method_decorator(csrf_exempt, name='dispatch')
 class update_view(UpdateView):
     def post(self, request, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = return_msg.bad_request, return_msg.S400
+            response['msg'], response['code'] = return_msg.bad_request, return_msg.code_400
             return JsonResponse(response, status=400)
         try:
             # 从请求的 body 中获取 JSON 数据
@@ -286,11 +285,11 @@ class update_view(UpdateView):
 @method_decorator(csrf_exempt, name='dispatch')
 class preview_view(DetailView):
     def post(self, request, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = return_msg.bad_request, return_msg.S400
+            response['msg'], response['code'] = return_msg.bad_request, return_msg.code_400
             return JsonResponse(response, status=400)
         try:
             id = j.get('id')
@@ -304,7 +303,7 @@ class preview_view(DetailView):
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
                 if len(rows) == 0:
-                    response['msg'], response['code'] = return_msg.no_template, return_msg.S100
+                    response['msg'], response['code'] = return_msg.no_template, return_msg.code_100
                     return JsonResponse(response, status=400)
                 equipment = []
                 unit = []
@@ -341,18 +340,18 @@ class preview_view(DetailView):
                 return JsonResponse(response)
         except Exception as e:
             print(e)
-            response['code'], response['msg'] = return_msg.S100, return_msg.row_none
+            response['code'], response['msg'] = return_msg.code_100, return_msg.row_none
             return JsonResponse(response, status=500)
 
-
+# 删除模板
 @method_decorator(csrf_exempt, name='dispatch')
 class delete_view(UpdateView):
     def post(self, request, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = return_msg.bad_request, return_msg.S400
+            response['msg'], response['code'] = return_msg.bad_request, return_msg.code_400
             return JsonResponse(response, status=400)
         try:
             ids = j.get('ids')
@@ -373,7 +372,7 @@ class delete_view(UpdateView):
             return JsonResponse(response)
         except self.model.DoesNotExist:
             conn.rollback()
-            response['code'], response['msg'] = return_msg.S100, return_msg.fail_delete
+            response['code'], response['msg'] = return_msg.code_100, return_msg.fail_delete
             return JsonResponse(response, status=500)
 
 
@@ -381,93 +380,59 @@ class delete_view(UpdateView):
 @method_decorator(csrf_exempt, name='dispatch')
 class export_view(DetailView):
     def post(self, request, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = return_msg.bad_request, return_msg.S400
+            response['msg'], response['code'] = return_msg.bad_request, return_msg.code_400
             return JsonResponse(response, status=400)
         try:
             id = j.get('id')
             with conn.cursor() as cur:
                 sql = 'select t.id,t.name,t.is_file,te.equipment_name,ut.unit_name ' \
                       'from template t ' \
-                      'left join tp_equipment te on t.id = te.template_id ' \
                       'left join unit_template ut on t.id = ut.template_id ' \
+                      'left join tp_equipment te on t.id = te.template_id ' \
                       'where t.id=%s'
                 params = [id]
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
-                data = {'id': rows[0]['id'], 'name': rows[0]['name'], 'equipment_name': [], 'unit_name': []}
+                if len(rows) == 0:
+                    response['msg'], response['code'] = return_msg.no_template, return_msg.code_100
+                    return JsonResponse(response, status=400)
+                equipment = []
+                unit = []
+                data = {'id': rows[0]['id'], 'name': rows[0]['name'],
+                        'feature': [{'prop': 'equipment_name', 'label': '装备名称', 'value': equipment},
+                                    {'prop': 'unit_name', 'label': '单位名称', 'value': unit},
+                                    {'prop': 'attechment', 'label': '附件', 'value': None}],
+                        'info_box':[],
+                        'data_box':[]}
                 for row in rows:
-                    data['equipment_name'].append(row['equipment_name'])
-                    data['unit_name'].append(row['unit_name'])
-                data['equipment_name'] = list(set(data['equipment_name']))
-                data['unit_name'] = list(set(data['unit_name']))
-                sql = 'select tf.in_box,tf.component ' \
+                    if row['equipment_name'] is not None and row['equipment_name'] not in equipment:
+                        equipment.append(row['equipment_name'])
+                    if row['unit_name'] is not None and row['unit_name'] not in unit:
+                        unit.append(row['unit_name'])
+
+                sql = 'select tf.in_box,tf.component,tf.label,tf.default,tf.type,tf.field_id ' \
                       'from template t ' \
                       'left join template_fields tf on tf.template_id =t.id ' \
                       'where t.id=%s'
                 params = [id]
                 cur.execute(sql, params)
                 rows = rows_as_dict(cur)
-                # 动态table的ngform格式
-                table = {
-                    "type": "batch",
-                    "label": "动态表格",
-                    "list": [],
-                    "options": {
-                        "scrollY": 0,
-                        "disabled": False,
-                        "hidden": False,
-                        "showLabel": False,
-                        "hideSequence": False,
-                        "labelWidth": "100",
-                        "labelPosition": "left",
-                        "customStyle": "",
-                        "customClass": "",
-                        "showItem": [
-                        ],
-                        "colWidth": {},
-                        "width": "100%",
-                        "dynamicHide": False,
-                        "dynamicHideValue": ""
-                    },
-                    "model": "data_box",
-                    "key": "data_box"
-                }
                 # 通过不同的区域来分组 每个组件
                 for row in rows:
                     # 先取出组件数据
-                    try:
-                        component = json.loads(row['component'])
-                    except:
-                        component = None
-                    if component is None:
-                        continue
-                    # 判断box的区域位置
+                    name = row['label']
+                    type = row['type']
+                    default = row['default']
                     box_name = row['in_box']
-                    if box_name not in data:
-                        data[box_name] = {'list': [], 'config': {
-                            'labelPosition': "left",
-                            'labelWidth': 100,
-                            'size': "mini",
-                            'outputHidden': True,
-                            'hideRequiredMark': False,
-                            'syncLabelRequired': False,
-                            'customStyle': "",
-                        }}
-                    # data_box是动态table格式，需要特殊处理
-                    if box_name == 'data_box':
-                        table['list'].append(component)
-                    else:
-                        data[box_name]['list'].append(component)
-                if 'data_box' in data:
-                    data['data_box']['list'].append(table)
-                response['data'] = data
+                    key=row['field_id']
+                    if box_name in data:
+                        data[box_name] .append({'key':key,'name': name, 'type': type, 'default': default})
 
                 cipher_suite = Fernet(FERNET_KEY)
-
                 # 对数据进行加密
                 json_str = json.dumps(data)
                 cipher_text = cipher_suite.encrypt(json_str.encode())
@@ -486,7 +451,7 @@ class export_view(DetailView):
                 response['Content-Disposition'] = f'attachment; filename*=UTF-8\'\'{quote(file_name)}'
                 return response
         except Exception as e:
-            response['code'], response['msg'] = return_msg.S100, return_msg.row_none
+            response['code'], response['msg'] = return_msg.code_100, return_msg.row_none
             print(e)
             return JsonResponse(response, status=500)
 
@@ -495,7 +460,7 @@ class export_view(DetailView):
 @method_decorator(csrf_exempt, name='dispatch')
 class import_view(DetailView):
     def post(self, request, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             file = request.FILES.get('file')
             file_binary = file.read()
@@ -506,10 +471,10 @@ class import_view(DetailView):
                 response['data'] = json.loads(json_str)
                 return JsonResponse(response, status=200)
             except:
-                response['code'], response['msg'] = return_msg.S100, return_msg.illegal_rc
+                response['code'], response['msg'] = return_msg.code_100, return_msg.illegal_rc
                 return JsonResponse(response, status=500)
         except Exception as e:
-            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            response['code'], response['msg'] = return_msg.code_100, return_msg.inner_error
             return JsonResponse(response, status=500)
 
 
@@ -517,7 +482,7 @@ class import_view(DetailView):
 @method_decorator(csrf_exempt, name='dispatch')
 class export_field_view(DetailView):
     def get(self, request, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
 
             file_path = os.path.join(TEMPLATE_ROOT, '模板文件.xlsx')
@@ -549,7 +514,7 @@ class export_field_view(DetailView):
             #         response['Content-Disposition'] = 'attachment;filename*=UTF-8\'\'{}'.format(file_name)
             #         return response
         except Exception as e:
-            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            response['code'], response['msg'] = return_msg.code_100, return_msg.inner_error
             return HttpResponse("error", status=500)
 
 
@@ -557,7 +522,7 @@ class export_field_view(DetailView):
 @method_decorator(csrf_exempt, name='dispatch')
 class import_field_view(DetailView):
     def post(self, request: HttpRequest, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             template_id = request.GET.get('template_id')
             box = request.GET.get('box')
@@ -636,5 +601,5 @@ class import_field_view(DetailView):
 
 
         except Exception as e:
-            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            response['code'], response['msg'] = return_msg.code_100, return_msg.inner_error
             return JsonResponse(response, status=500)

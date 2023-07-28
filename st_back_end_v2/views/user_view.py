@@ -15,7 +15,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import ListView, CreateView, UpdateView
 
-from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict
+from st_back_end_v2.utils.utils import create_uuid, return_msg, create_response, rows_as_dict
 
 
 # 获取用户列表
@@ -23,11 +23,11 @@ from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict
 # @method_decorator(check_token, name='dispatch')
 class list_view(ListView):
     def post(self, request: HttpRequest, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
             return JsonResponse(response,status=400)
         try:
             # 从请求的 body 中获取 JSON 数据
@@ -54,7 +54,7 @@ class list_view(ListView):
                 response['data'] = {'records': rows, 'title': None, 'total': count}
             return JsonResponse(response)
         except Exception as e:
-            response['code'], response['msg'] = return_msg.S100, return_msg.params_error
+            response['code'], response['msg'] = return_msg.code_100, return_msg.params_error
             return JsonResponse(response)
 
 
@@ -63,11 +63,11 @@ class list_view(ListView):
 class create_view(CreateView):
 
     def post(self, request: HttpRequest, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
             return JsonResponse(response,status=400)
         try:
             name = j.get('name')
@@ -88,7 +88,7 @@ class create_view(CreateView):
                 response['data'] = {'password': '123456'}
         except Exception as e:
             conn.rollback()
-            response['code'], response['msg'] = return_msg.S100, return_msg.fail_insert
+            response['code'], response['msg'] = return_msg.code_100, return_msg.fail_insert
         return JsonResponse(response)
 
 
@@ -96,12 +96,12 @@ class create_view(CreateView):
 @method_decorator(csrf_exempt, name='dispatch')
 class update_view(UpdateView):
     def post(self, request, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
 
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
             return JsonResponse(response, status=400)
         try:
             id = j.get('id')  # 用户id
@@ -115,7 +115,7 @@ class update_view(UpdateView):
 
         except:
             conn.rollback()
-            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            response['code'], response['msg'] = return_msg.code_100, return_msg.inner_error
             return JsonResponse(response, status=500)
 
 
@@ -124,11 +124,11 @@ class update_view(UpdateView):
 class delete_view(CreateView):
 
     def post(self, request: HttpRequest, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
             return JsonResponse(response, status=400)
         try:
             id = j.get('id')  # 用户id
@@ -141,7 +141,7 @@ class delete_view(CreateView):
             return JsonResponse(response)
         except Exception as e:
             conn.rollback()
-            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            response['code'], response['msg'] = return_msg.code_100, return_msg.inner_error
             return JsonResponse(response, status=500)
 
 # 重置密码
@@ -149,11 +149,11 @@ class delete_view(CreateView):
 class reset_view(CreateView):
 
     def post(self, request: HttpRequest, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
             return JsonResponse(response, status=400)
         try:
             id = j.get('id')  # 用户id
@@ -166,5 +166,5 @@ class reset_view(CreateView):
             return JsonResponse(response)
         except Exception as e:
             conn.rollback()
-            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            response['code'], response['msg'] = return_msg.code_100, return_msg.inner_error
             return JsonResponse(response, status=500)

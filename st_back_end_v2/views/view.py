@@ -17,27 +17,28 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
 from ..settings import FILE_ROOT
-from ..tools import return_msg, create_return_json, rename_file_with_uuid
+from st_back_end_v2.utils.utils import return_msg, create_response, rename_file_with_uuid
 
 
 # 上传接口
 @method_decorator(csrf_exempt, name='dispatch')
 class upload_file_view(View):
     def post(self, request, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             file = request.FILES.get('file')
-        # 重新命名文件
-            file_name,id = rename_file_with_uuid(file.name)
+            # 重新命名文件
+            file_name, id = rename_file_with_uuid(file.name)
             file_path = os.path.join(FILE_ROOT, file_name)
             with default_storage.open(file_path, 'wb') as destination:
                 for chunk in file.chunks():
                     destination.write(chunk)
-            response['data'] = {'id': file_name,'name':file.name}
+            response['data'] = {'id': file_name, 'name': file.name}
             return JsonResponse(response, status=200)
         except Exception as e:
-            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            response['code'], response['msg'] = return_msg.code_100, return_msg.inner_error
             return JsonResponse(response, status=500)
+
 
 # 下载附件接口
 @method_decorator(csrf_exempt, name='dispatch')
@@ -51,9 +52,9 @@ class download_file_view(View):
         if os.path.exists(file_path):
             file_name = quote(name)
             # 直接在FileResponse内部打开文件
-            response = FileResponse(open(file_path, 'rb'),content_type="application/octet-stream")
+            response = FileResponse(open(file_path, 'rb'), content_type="application/octet-stream")
             response['Access-Control-Expose-Headers'] = '*'
             response['Content-Disposition'] = 'attachment; filename*=UTF-8\'\'{}'.format(file_name)
             return response
         else:
-            return  Http404
+            return Http404

@@ -12,14 +12,14 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import ListView
 
-from ..tools import   create_return_json, rows_as_dict, list_to_tree
+from st_back_end_v2.utils.utils import   create_response, rows_as_dict, list_to_tree
 
 # 获取系统菜单模块列表
 @method_decorator(csrf_exempt, name='dispatch')
 # @method_decorator(check_token, name='dispatch')
 class list_view(ListView):
     def post(self, request: HttpRequest, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             # 执行原生 SQL 查询
             with conn.cursor() as cur:

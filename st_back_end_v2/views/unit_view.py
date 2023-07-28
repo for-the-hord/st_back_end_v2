@@ -24,18 +24,18 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import ListView, CreateView, UpdateView, DeleteView
 
 
-from ..tools import create_uuid, return_msg, create_return_json, rows_as_dict
+from st_back_end_v2.utils.utils import create_uuid, return_msg, create_response, rows_as_dict
 
 # 获取所有单位列表接口
 @method_decorator(csrf_exempt, name='dispatch')
 # @method_decorator(check_token, name='dispatch')
 class list_view(ListView):
     def post(self, request: HttpRequest, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
             return JsonResponse(response,status=400)
         try:
             page_size = j.get('page_size')
@@ -88,7 +88,7 @@ class list_view(ListView):
             # 构造返回数据
             response['data'] = {'records': records, 'title': None, 'total': count}
         except Exception as e:
-            response['code'], response['msg'] = return_msg.S100, return_msg.params_error
+            response['code'], response['msg'] = return_msg.code_100, return_msg.params_error
 
         return JsonResponse(response)
 
@@ -98,11 +98,11 @@ class list_view(ListView):
 class create_view(CreateView):
 
     def post(self, request: HttpRequest, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
             return JsonResponse(response,status=400)
         try:
             name = j.get('name')
@@ -115,7 +115,7 @@ class create_view(CreateView):
                 rows = rows_as_dict(cur)
                 count = rows[0]['count']
                 if count !=0:
-                    response['code'], response['msg'] = return_msg.S100, return_msg.exist_unit
+                    response['code'], response['msg'] = return_msg.code_100, return_msg.exist_unit
                     return JsonResponse(response,status=400)
                 sql = 'insert into unit (id,name) values(%s,%s)'
                 params = [id, name]
@@ -127,7 +127,7 @@ class create_view(CreateView):
             return JsonResponse(response)
         except Exception as e:
             conn.rollback()
-            response['code'], response['msg'] = return_msg.S100, return_msg.fail_insert
+            response['code'], response['msg'] = return_msg.code_100, return_msg.fail_insert
             return JsonResponse(response,status=500)
 
 
@@ -136,11 +136,11 @@ class create_view(CreateView):
 class update_view(UpdateView):
 
     def post(self, request, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
             return JsonResponse(response,status=400)
         try:
             name = j.get('name')
@@ -153,7 +153,7 @@ class update_view(UpdateView):
                 rows = rows_as_dict(cur)
                 count = rows[0]['count']
                 if count !=0:
-                    response['code'], response['msg'] = return_msg.S100, return_msg.exist_unit
+                    response['code'], response['msg'] = return_msg.code_100, return_msg.exist_unit
                     return JsonResponse(response,status=400)
                 sql = 'delete from unit_template  where unit_name=%s'
                 params = [name]
@@ -165,7 +165,7 @@ class update_view(UpdateView):
             return JsonResponse(response)
         except Exception as e:
             conn.rollback()
-            response['code'], response['msg'] = return_msg.S100, return_msg.fail_update
+            response['code'], response['msg'] = return_msg.code_100, return_msg.fail_update
             return JsonResponse(response,status=500)
 
 
@@ -174,11 +174,11 @@ class update_view(UpdateView):
 class delete_view(DeleteView):
 
     def post(self, request, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
             return JsonResponse(response,status=400)
         try:
             ids = j.get('ids')
@@ -197,5 +197,5 @@ class delete_view(DeleteView):
             return JsonResponse(response)
         except Exception as e:
             conn.rollback()
-            response['code'], response['msg'] = return_msg.S100, return_msg.fail_delete
+            response['code'], response['msg'] = return_msg.code_100, return_msg.fail_delete
             return JsonResponse(response,status=500)

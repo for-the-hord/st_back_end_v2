@@ -12,13 +12,16 @@ https://docs.djangoproject.com/en/4.1/ref/settings/
 
 from pathlib import Path
 import os
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 TEMPLATE_ROOT = os.path.join(BASE_DIR, 'st_back_end_v2/files')
 
-FILE_ROOT  = os.path.join(BASE_DIR, 'st_back_end_v2/files/attachment')
+FILE_ROOT = os.path.join(BASE_DIR, 'st_back_end_v2/files/attachment')
+TEMP_ROOT = os.path.join(BASE_DIR, 'st_back_end_v2/files/temp')
 BACKUP_ROOT = os.path.join(BASE_DIR, 'st_back_end_v2/files/backup')
+FLIGHT_ROOT = os.path.join(BASE_DIR, 'st_back_end_v2/files/flight')
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.1/howto/deployment/checklist/
 
@@ -27,9 +30,6 @@ SECRET_KEY = 'django-insecure-$u$a)&wvw6jkf-34akd)5roxmmgvsoo+ik7u4i1#uxzceh#86%
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
-
-ALLOWED_HOSTS = ['*']
-
 
 # Application definition
 # pip install django-cors-headers
@@ -41,7 +41,10 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'corsheaders',
-    'st_back_end_v2'
+    'st_back_end_v2',
+    'rest_framework',
+    'rest_framework_swagger',
+    'rest_framework.authtoken'
 ]
 
 MIDDLEWARE = [
@@ -49,16 +52,20 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    #'django.middleware.csrf.CsrfViewMiddleware',
+    # 'django.middleware.csrf.CsrfViewMiddleware'
 
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+ALLOWED_HOSTS = ['*']
+
+CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = True
 ROOT_URLCONF = 'st_back_end_v2.urls'
 
-#下面就是logging的配置
+# 下面就是logging的配置
 # LOGGING = {
 #     'version': 1,  # 指明dictConnfig的版本，目前就只有一个版本，哈哈
 #     'disable_existing_loggers': False,  # 表示是否禁用所有的已经存在的日志配置
@@ -144,11 +151,20 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'st',  # 数据库名称
         'USER': 'root',  # 数据库用户名
-        'PASSWORD': '123456',  # 数据库密码
+        'PASSWORD': 'Aa123456!',  # 数据库密码
         'HOST': 'localhost',  # 数据库主机，默认为'localhost'
         'PORT': '3306',  # 数据库端口，默认为'3306'
     }
 }
+
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.mysql',
+#         'OPTIONS': {
+#             'read_default_file': os.path.dirname(os.path.abspath(__file__))+'/my.cnf',
+#         },
+#     }
+# }
 
 # 前端静态文件配置
 STATICFILES_DIRS = [
@@ -173,7 +189,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
 # Internationalization
 # https://docs.djangoproject.com/en/4.1/topics/i18n/
 
@@ -184,7 +199,6 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 
 USE_TZ = True
-
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.1/howto/static-files/

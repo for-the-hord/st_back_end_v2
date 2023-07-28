@@ -20,19 +20,19 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import UpdateView
 
-from ..tools import return_msg, create_return_json, rows_as_dict, list_to_tree
+from st_back_end_v2.utils.utils import return_msg, create_response, rows_as_dict, list_to_tree
 
 
 # 登录
 class login(View):
 
     def post(self, request: HttpRequest):
-        response = create_return_json()
+        response = create_response()
 
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
             return JsonResponse(response, status=400)
 
         if j is not None:
@@ -72,7 +72,7 @@ class login(View):
                         json.dump(data, write_file,ensure_ascii=False, indent=4)
                 return JsonResponse(response, status=200)
             else:
-                response['msg'], response['code'] = '账户或密码错误！', return_msg.S100
+                response['msg'], response['code'] = '账户或密码错误！', return_msg.code_100
                 return JsonResponse(response, status=400)
         else:
             return JsonResponse(response, status=400)
@@ -82,7 +82,7 @@ class login(View):
 @method_decorator(csrf_exempt, name='dispatch')
 class Login_unit_list_view(View):
     def post(self, request: HttpRequest):
-        response = create_return_json()
+        response = create_response()
         with conn.cursor() as cur:
             sql = 'select n.id,n.name from  unit n '
             cur.execute(sql)
@@ -94,11 +94,11 @@ class Login_unit_list_view(View):
 # 登录
 class login_without(View):
     def post(self, request: HttpRequest):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
             return JsonResponse(response, status=400)
         if j is not None:
             unit_name = j.get('unit_name', None)
@@ -106,7 +106,7 @@ class login_without(View):
             response['data'] = {'unit_name': unit_name}
             return JsonResponse(response)
         else:
-            response['code'], response['msg'] = return_msg.S100, return_msg.params_error
+            response['code'], response['msg'] = return_msg.code_100, return_msg.params_error
             return JsonResponse(response, status=400)
 
 
@@ -115,12 +115,12 @@ class login_without(View):
 class sys_info_update_view(UpdateView):
 
     def post(self, request, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
 
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
             return JsonResponse(response, status=400)
         try:
             name = j.get('sys_title')
@@ -131,7 +131,7 @@ class sys_info_update_view(UpdateView):
                 conn.commit()
         except Exception as e:
             conn.rollback()
-            response['code'], response['msg'] = return_msg.S100, return_msg.fail_update
+            response['code'], response['msg'] = return_msg.code_100, return_msg.fail_update
         return JsonResponse(response)
 
 
@@ -140,11 +140,11 @@ class sys_info_update_view(UpdateView):
 class get_router(UpdateView):
 
     def post(self, request, *args, **kwargs):
-        response = create_return_json()
+        response = create_response()
         try:
             j = json.loads(request.body)
         except:
-            response['msg'], response['code'] = 'bad request！', return_msg.S400
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
             return JsonResponse(response, status=400)
         try:
             user_id = j.get('user_id')
@@ -161,5 +161,5 @@ class get_router(UpdateView):
                 response['data'] = data
                 return JsonResponse(response)
         except Exception as e:
-            response['code'], response['msg'] = return_msg.S100, return_msg.inner_error
+            response['code'], response['msg'] = return_msg.code_100, return_msg.inner_error
             return JsonResponse(response, status=500)
