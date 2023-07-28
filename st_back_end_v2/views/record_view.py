@@ -517,26 +517,27 @@ class calibrate_data:
         if len(data) > 0:
             di = dict(data[0])
             keys = di.keys()
-            with conn.cursor() as cur:
-                placeholders = ', '.join(f'"{key}"' for key in keys)
-                sql = f'''select tf.field_id,tf.label,tf.type,tf.`default` 
-                          from template_fields tf 
-                          where tf.field_id in ({placeholders})'''
-                cur.execute(sql)
-                rows = rows_as_dict(cur)
-                regex_dict = []  # [{'id1':[rex,rex,rex,rex],'type':'','default':''},...]
+            regex_dict = []  # [{'id1':[rex,rex,rex,rex],'type':'','default':''},...]
+            if keys:
+                with conn.cursor() as cur:
+                    placeholders = ', '.join(f'"{key}"' for key in keys)
+                    sql = f'''select tf.field_id,tf.label,tf.type,tf.`default` 
+                              from template_fields tf 
+                              where tf.field_id in ({placeholders})'''
+                    cur.execute(sql)
+                    rows = rows_as_dict(cur)
 
-                def find_regx(type):
-                    return calibration.get(type)
+                    def find_regx(type):
+                        return calibration.get(type)
 
-                for row in rows:
-                    record = {}
-                    key = row['field_id']
-                    type = row['type']
-                    record[key] = find_regx(type)
-                    record['type'] = type
-                    record['default'] = row['default']
-                    regex_dict.append(record)
+                    for row in rows:
+                        record = {}
+                        key = row['field_id']
+                        type = row['type']
+                        record[key] = find_regx(type)
+                        record['type'] = type
+                        record['default'] = row['default']
+                        regex_dict.append(record)
 
             df = pd.DataFrame(data)
             for row in range(df.shape[0]):
@@ -581,6 +582,7 @@ class create_view(CreateView, calibrate_data):
             return JsonResponse(response, status=400)
         try:
             # name = j.get('name')
+            mission_id = j.get('mission_id')
             template_id = j.get('template_id')
             equipment_name = j.get('equipment_name')
             unit_name = j.get('unit_name')
@@ -608,9 +610,9 @@ class create_view(CreateView, calibrate_data):
             with conn.cursor() as cur:
                 create_date = datetime.now().timestamp()
                 sql = 'insert into record (id,template_id,unit_name,equipment_name,create_date,' \
-                      'update_date,record_date,attachment) ' \
-                      'values(%s,%s,%s,%s,%s,%s,%s,%s)'
-                params = [id, template_id, unit_name, equipment_name, create_date, create_date, record_date, attachment]
+                      'update_date,record_date,attachment,mission_id) ' \
+                      'values(%s,%s,%s,%s,%s,%s,%s,%s,%s)'
+                params = [id, template_id, unit_name, equipment_name, create_date, create_date, record_date, attachment,mission_id]
 
                 cur.execute(sql, params)
                 sql = 'insert into record_fields (record_id, field_id, field_value, serial_no,std_value) ' \
@@ -705,6 +707,32 @@ class delete_view(DeleteView):
                 cur.executemany(sql, params)
 
                 sql = 'delete from record  where id = %s'
+                cur.executemany(sql, params)
+                conn.commit()
+            return JsonResponse(response)
+        except self.model.DoesNotExist:
+            conn.rollback()
+            response['code'], response['msg'] = return_msg.code_100, return_msg.fail_delete
+            return JsonResponse(response, status=500)
+
+
+# 移至一个或者多个数据信息接口
+@method_decorator(csrf_exempt, name='dispatch')
+class move_view(DeleteView):
+
+    def post(self, request, *args, **kwargs):
+        response = create_response()
+        try:
+            j = json.loads(request.body)
+        except:
+            response['msg'], response['code'] = 'bad request！', return_msg.code_400
+            return JsonResponse(response, status=400)
+        try:
+            ids = j.get('ids')
+            mission_id = j.get('mission_id')
+            params = [[mission_id,it] for it in ids]
+            with conn.cursor() as cur:
+                sql = 'update record set mission_id=%s where id = %s'
                 cur.executemany(sql, params)
                 conn.commit()
             return JsonResponse(response)

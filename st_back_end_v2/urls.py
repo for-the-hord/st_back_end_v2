@@ -78,6 +78,7 @@ urlpatterns = [
     path('api/export_record_field', record_view.export_field_view.as_view()),
     path('api/export_batch_record',record_view.export_batch_view.as_view()),
     path('api/import_batch_record', record_view.import_batch_view.as_view()),
+    path('api/move_to_record', record_view.move_view.as_view()),
 
     # 单位管理
     path('api/get_unit_list', unit_view.list_view.as_view()),
@@ -126,7 +127,8 @@ urlpatterns = [
     path('api/import_flight', flight_view.import_view.as_view()),
     path('api/del_flight', flight_view.delete_view.as_view()),
     path('api/export_flight', flight_view.export_view.as_view()),
-    path('api/export_batch_flight', flight_view.export_batch_view.as_view())
+    path('api/export_batch_flight', flight_view.export_batch_view.as_view()),
+    path('api/move_to_flight',flight_view.move_view.as_view()),
 
     # 测试
     # path('api/a', sys_view.a.as_view()),
